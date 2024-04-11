@@ -31,7 +31,7 @@ class PurePursuit(Node):
         self.wheelbase_length = 0.3  # FILL IN #
 
         self.MIN_SPEED = 1.6
-        self.MAX_SPEED = 8.0
+        self.MAX_SPEED = 10.0
 
         self.MAX_LOOKAHEAD = 3.0
         self.MIN_LOOKAHEAD = 0.1
@@ -123,6 +123,7 @@ class PurePursuit(Node):
         if self.current_pose is not None and self.points is not None:
 
             R = self.transform(self.current_pose[2])
+            pose_init = self.current_pose
             #get transform matrix between global and robot frame
 
             differences = self.points - self.current_pose
@@ -144,7 +145,10 @@ class PurePursuit(Node):
 
             closest_xy = filtered_points[np.argmin(distances)]
 
-            marker = self.to_marker(closest_xy,rgb=[0.0,0.5,0.5],scale=0.5)
+
+            closest_xy_global = np.matmul(np.linalg.inv(R),closest_xy)+pose_init
+
+            marker = self.to_marker(closest_xy_global,rgb=[0.0,0.5,0.5],scale=0.5)
             self.closestpub.publish(marker)
 
             return np.array(closest_xy)
