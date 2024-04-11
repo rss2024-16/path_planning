@@ -50,14 +50,15 @@ class PathPlan(Node):
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
+
     def map_cb(self, msg):
-        raise NotImplementedError
+        return
 
     def pose_cb(self, pose):
-        raise NotImplementedError
+        return
 
     def goal_cb(self, msg):
-        raise NotImplementedError
+        return
 
     def plan_path(self, start_point, end_point, map):
         self.traj_pub.publish(self.trajectory.toPoseArray())
