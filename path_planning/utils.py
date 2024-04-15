@@ -8,6 +8,8 @@ import os
 from typing import List, Tuple
 import json
 
+from tf_transformations import euler_from_quaternion
+
 EPSILON = 0.00000000001
 
 ''' These data structures can be used in the search function
@@ -235,3 +237,183 @@ class LineTrajectory:
         header.stamp = stamp
         header.frame_id = frame_id
         return header
+
+class Map():
+    def __init__(self, occupany_grid) -> None:
+        self._height = occupany_grid.info.height
+        self._width = occupany_grid.info.width
+
+        self._resolution = occupany_grid.info.resolution
+
+        p = occupany_grid.info.origin.position #Ros2 Point
+        self.origin_p = np.array([[p.x], [p.y], [p.z]]) #3x1
+
+        o = occupany_grid.info.origin.orientation #Ros2 Quaternion
+        self.origin_o = [o.x, o.y, o.z, o.w]
+
+        self.R_z = lambda theta: np.array([ [np.cos(theta), -np.sin(theta), 0],
+                                             [np.sin(theta), np.cos(theta), 0],
+                                             [0, 0, 1]
+                                            ])
+        
+        # probs faster to use 1D array rep 
+        #2d (int) array of pixel coords indexed by grid[v][u] 
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+
+    @property
+    def height(self) -> int:
+        return self._height
+
+    @property
+    def width(self) -> int:
+        return self._width  
+
+    @property
+    def resolution(self) -> float:
+        return self._resolution   
+
+    def __len__(self) -> int:
+        return self._height * self._width   
+
+    def xy_to_pixel(self, x: float, y: float) -> Tuple[int, int]:
+        """
+        Converts x,y point in map frame to u,v pixel in occupancy grid
+        """
+        q = np.array([[x], [y], [0]]) #3x1 x,y,z
+
+        q = q - self.origin_p
+        
+        _, _, yaw = euler_from_quaternion(self.origin_o)
+
+        q = self.R_z(-yaw) @ q
+
+        q = q / self._resolution
+
+        # self.get_logger().info(f'q {q}') #u, v
+
+        u, v = q[:2, :]
+
+        return (int(round(u[0])), int(round(v[0])))
+    
+    def pixel_to_xy(self, u: int, v: int) -> Tuple[float, float]:
+        """
+        Converts u,v pixel to x,y point in map frame
+        """
+        pixel = np.array([[u], [v], [0]])
+
+        pixel = pixel * self._resolution
+
+        _, _, yaw = euler_from_quaternion(self.origin_o)
+
+        q = self.R_z(yaw) @ pixel
+
+        q = q + self.origin_p
+
+        x, y = q[:2, :]
+
+        return (x[0], y[0])
+    
+    def is_free(self, u, v) -> bool:
+        return self.grid[v][u] == 0
+    
+    def bfs(self, start: Tuple[float, float], goal: Tuple[float, float]):
+        """
+        start: tuple of (x, y) coord in map frame
+        goal: tuple of (x, y) coord in map frame
+
+        Returns path from start to goal
+        """
+        start = self.discretize_point(start)
+        goal = self.discretize_point(goal)
+        
+        visited = {start}
+        queue = [start]
+        parent = {start: None}
+
+        end = None
+
+        while queue:
+            current = queue.pop(0)  
+            if current == goal:
+                end = current
+                break
+            for n in self.get_neighbors(current):
+                if n not in visited:
+                    visited.add(n)
+                    queue.append(n)
+                    parent[n] = current 
+
+        # if no path was found
+        if end not in parent:
+            return None
+        
+        i = end
+        path = [end]
+        while i != start:
+            i = parent[i]
+            path.append(i)
+        
+        return path[::-1] #path start -> goal in tuples of x,y point nodes
+
+    def get_neighbor(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
+        #+1, +1
+        #+1, 0
+        #+1, -1
+        #0, -1
+        #-1, -1
+        #-1, 0
+        #-1, +1
+        #0, +1
+        neighbors = []
+
+        return neighbors
+
+
+    def discretize_point(self, point: Tuple[float, float]) -> Tuple[float, float]:
+        """
+        Discretizes a point (x, y) to a node in the space such that nodes are the
+        center of each 1x1 grid square. In the case where a point is on the edge
+        of a grid square, the point will be assigned to the center with decreasing 
+        x and increasing y.
+        """
+        x, y = point
+
+        mid = 0.5
+
+        new_x = int(x)
+        new_y = int(y)
+
+        if x >= 0 and y >= 0:
+            if x - new_x == 0:
+                new_x -= mid
+            else:
+                new_x += mid
+            
+            new_y += mid
+        
+        elif x < 0 and y >= 0:
+            new_x -= mid
+            new_y += mid
+
+    
+        elif x <= 0 and y < 0:
+            if y - new_y == 0:
+                new_y += mid
+            else:
+                new_y -= mid
+            
+            new_x -= mid 
+
+        elif x > 0 and y < 0:
+            if y - new_y == 0:
+                new_y += mid
+            else:
+                new_y -= mid
+
+            if x - new_x == 0:
+                new_x -= mid
+            else:
+                new_x += mid
+
+        return (new_x, new_y)
+
