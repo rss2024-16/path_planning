@@ -289,8 +289,6 @@ class Map():
 
         q = q / self._resolution
 
-        # self.get_logger().info(f'q {q}') #u, v
-
         u, v = q[:2, :]
 
         return (int(round(u[0])), int(round(v[0])))
@@ -355,19 +353,16 @@ class Map():
         
         return path[::-1] #path start -> goal in tuples of x,y point nodes
 
-    def get_neighbor(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
-        #+1, +1
-        #+1, 0
-        #+1, -1
-        #0, -1
-        #-1, -1
-        #-1, 0
-        #-1, +1
-        #0, +1
+    def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
+        x, y = point
         neighbors = []
 
-        return neighbors
+        for (dx, dy) in [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]:
+            u, v = self.xy_to_pixel(x + dx, y + dy)
+            if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
+                neighbors.append((x + dx, y + dy)) 
 
+        return neighbors
 
     def discretize_point(self, point: Tuple[float, float]) -> Tuple[float, float]:
         """

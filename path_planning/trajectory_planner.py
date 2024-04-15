@@ -7,7 +7,6 @@ from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory, Map
 
 import numpy as np
-from tf_transformations import euler_from_quaternion
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -58,73 +57,53 @@ class PathPlan(Node):
         #                                     ])
         
         self.occ_map = None
+        self.s = None
+        self.t = None
 
     def map_cb(self, msg):
         #height x width -> 1300 x 1730 = 2,249,000
         #msg.data len -> 2,249,000
         #msg.data vals -> -1, 0, or 100 (0 means free space)
-
         self.get_logger().info("starting")
-
         self.occ_map = Map(msg)
-
-
-
-        # d = np.array(msg.data).reshape((msg.info.height, msg.info.width))
-
-        # q = np.array([[0], [0], [0]]) #3x1 x,y,z
-
-        # p = msg.info.origin.position
-        # q = q - np.array([[p.x], [p.y], [p.z]])
-
-        # orientation = msg.info.origin.orientation
-
-        # _, _, yaw = euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])
-
-        # q = ((self.R_z(-yaw) @ q) / msg.info.resolution)
-
-        # self.get_logger().info(f'q {q}') #u, v
-
-        # u, v = q[:2, :]
-
-        # self.get_logger().info(f'v2 {d[round(v[0])][round(u[0])]}') #u, v
-
-        return
 
     def pose_cb(self, pose):
         """
         New initial pose (PoseWithCovarianceStamped)
         """
-        return
+        self.s = pose.pose.pose.position
+        if self.t is not None: 
+            self.plan_path(self.s, self.t)
 
     def goal_cb(self, msg):
         """
         New goal pose (PoseStamped)
         """
+        self.t = msg.pose.position
+        if self.s is not None: 
+            self.plan_path(self.s, self.t)
+        # p = msg.pose.position
+        # self.get_logger().info(f'old x,y {(p.x,p.y)}') #u, v
 
-        # u, v = 512, 963
+        # u,v = self.occ_map.xy_to_pixel(p.x, p.y)
+        # self.get_logger().info(f'u,v {(u,v)}') #u, v
+        # x,y = self.occ_map.pixel_to_xy(u , v)
+        # self.get_logger().info(f'new x,y {(x,y)}') #u, v
 
-        # x,y = self.occ_map.pixel_to_xy(u, v)
-        # n_u,n_v = self.occ_map.xy_to_pixel(x, y)
+    def plan_path(self, start_point, end_point):
+        """
+        start_point: Ros2 Point
+        end_point: Ros2 Point
+        """
+        self.trajectory.clear()
+        
+        s = (self.s.x, self.s.y)
+        t = (self.t.x, self.t.y)
 
-        # self.get_logger().info(f'new u,v {(n_u,n_v)}') #u, v
+        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        for p in path:
+            self.trajectory.addPoint(p)
 
-        # assert (u, v) == (n_u, n_v)
-
-
-
-        p = msg.pose.position
-        self.get_logger().info(f'old x,y {(p.x,p.y)}') #u, v
-
-        u,v = self.occ_map.xy_to_pixel(p.x, p.y)
-        self.get_logger().info(f'u,v {(u,v)}') #u, v
-        x,y = self.occ_map.pixel_to_xy(u , v)
-        self.get_logger().info(f'new x,y {(x,y)}') #u, v
-
-        # assert (x, y) == (p.x, p.y)
-        return
-
-    def plan_path(self, start_point, end_point, map):
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
 
