@@ -66,7 +66,7 @@ class PathPlan(Node):
         """
         self.s = pose.pose.pose.position
         if self.t is not None: 
-            self.plan_path(self.s, self.t)
+            self.plan_path()
 
     def goal_cb(self, msg):
         """
@@ -74,7 +74,7 @@ class PathPlan(Node):
         """
         self.t = msg.pose.position
         if self.s is not None: 
-            self.plan_path(self.s, self.t)
+            self.plan_path()
 
     def plan_path(self):
         """
@@ -86,7 +86,8 @@ class PathPlan(Node):
         s = (self.s.x, self.s.y)
         t = (self.t.x, self.t.y)
 
-        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float) 
+        if len(path) == 0: self.get_logger().info("No path found!")
         for p in path:
             self.trajectory.addPoint(p)
 
