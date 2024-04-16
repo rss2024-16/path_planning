@@ -343,7 +343,7 @@ class Map():
 
         # if no path was found
         if end not in parent:
-            return None
+            return []
         
         i = end
         path = [end]
