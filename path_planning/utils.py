@@ -285,7 +285,7 @@ class Map():
         
         _, _, yaw = euler_from_quaternion(self.origin_o)
 
-        q = self.R_z(-yaw) @ q
+        q = np.matmul(self.R_z(-yaw),q)
 
         q = q / self._resolution
 
@@ -303,7 +303,7 @@ class Map():
 
         _, _, yaw = euler_from_quaternion(self.origin_o)
 
-        q = self.R_z(yaw) @ pixel
+        q = np.matmul(self.R_z(yaw),pixel)
 
         q = q + self.origin_p
 
