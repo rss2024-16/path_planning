@@ -356,8 +356,8 @@ class Map():
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point
         neighbors = []
-
-        for (dx, dy) in [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]:
+        step = 0.5
+        for (dx, dy) in [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]:
             u, v = self.xy_to_pixel(x + dx, y + dy)
             if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
                 neighbors.append((x + dx, y + dy)) 
