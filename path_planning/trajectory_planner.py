@@ -79,8 +79,8 @@ class PathPlan(Node):
 
     def plan_path(self):
         """
-        start_point: Ros2 Point
-        end_point: Ros2 Point
+        start_point s: Ros2 Point
+        end_point t: Ros2 Point
         """
         self.trajectory.clear()
         
