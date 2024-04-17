@@ -31,7 +31,7 @@ class PurePursuit(Node):
         self.wheelbase_length = 0.3  # FILL IN #
 
         self.MIN_SPEED = 1.6
-        self.MAX_SPEED = 10.0
+        self.MAX_SPEED = 8.0
 
         self.MAX_LOOKAHEAD = 3.0
         self.MIN_LOOKAHEAD = 0.25

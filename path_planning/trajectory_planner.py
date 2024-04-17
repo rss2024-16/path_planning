@@ -65,8 +65,8 @@ class PathPlan(Node):
         New initial pose (PoseWithCovarianceStamped)
         """
         self.s = pose.pose.pose.position
-        if self.t is not None: 
-            self.plan_path()
+        # if self.t is not None: 
+        #     self.plan_path()
 
     def goal_cb(self, msg):
         """

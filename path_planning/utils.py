@@ -10,7 +10,11 @@ import json
 
 from tf_transformations import euler_from_quaternion
 
+from skimage.morphology import dilation
+from skimage.morphology import square
+
 import heapq
+import cv2
 
 EPSILON = 0.00000000001
 
@@ -322,6 +326,8 @@ class Map():
         # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
         self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = dilation(self.grid,square(10))
+        cv2.imwrite('test.png',self.grid)
 
     @property
     def height(self) -> int:
@@ -376,6 +382,9 @@ class Map():
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
+    
+    def blur_grid(self):
+        kernel_size = 5
 
     
     def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
@@ -474,7 +483,7 @@ class Map():
         p = path[0]
         idx = 1
 
-        while idx != len(path):
+        while idx != len(path)-1:
             try:
                 if slope_yx(p,path[idx]) < EPS or slope_xy(p,path[idx]) < EPS:
                     path[idx] = 0
@@ -490,7 +499,7 @@ class Map():
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point
         neighbors = []
-        step = 0.25
+        step = 0.5
         for (dx, dy) in [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]:
             u, v = self.xy_to_pixel(x + dx, y + dy)
             if not self.is_free(u, v):
