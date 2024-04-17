@@ -34,7 +34,7 @@ class PurePursuit(Node):
         self.MAX_SPEED = 10.0
 
         self.MAX_LOOKAHEAD = 3.0
-        self.MIN_LOOKAHEAD = 0.1
+        self.MIN_LOOKAHEAD = 0.25
 
         self.trajectory = LineTrajectory("/followed_trajectory")
         # self.get_logger().info('/followed_trajectory')
