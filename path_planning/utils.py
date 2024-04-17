@@ -317,6 +317,8 @@ class Map():
                                              [0, 0, 1]
                                             ])
         
+        self.MAX_TURN_RADIUS = 0.34
+        
         # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
         self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
@@ -374,12 +376,18 @@ class Map():
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
+
     
     def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
+        '''
+        simple alg taken from 
+        https://en.wikipedia.org/wiki/A*_search_algorithm
+        '''
         start_pose = self.discretize_point(start)
         goal = self.discretize_point(goal)
 
         h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
+        #heuristic is just Euclidean distance
 
         nodelookup = {}
 
@@ -388,14 +396,11 @@ class Map():
 
         q = PriorityQueue()
         q.put(start)
-        # parent = {start: None}
 
         while not q.empty():
-            # print(q.element_set)
             node = q.get()
 
             if node.pose == goal:
-                # self.get_logger().info("Goal reached")
                 return node.extract_path()
             
             for n in self.get_neighbors(node.pose):
@@ -406,6 +411,7 @@ class Map():
                     nodelookup[n] = n_obj
 
                 tentative_gscore = node.gscore + h(node.pose,n_obj.pose)
+
                 if tentative_gscore < n_obj.gscore:
                     n_obj.set_gscore(tentative_gscore)
                     n_obj.set_fscore(tentative_gscore + h(n_obj.pose,goal))
@@ -453,11 +459,41 @@ class Map():
             path.append(i)
         
         return path[::-1] #path start -> goal in tuples of x,y point nodes
+    
+    def generate_circle(self,point: Tuple[float,float]):
+        u,v = self.xy_to_pixel(point)
+    
+    def prune_path(self,path):
+        '''
+        gets rid of unnecessary (low slope) points
+
+        need to fix
+        '''
+        EPS = 0.01
+
+        slope_yx = lambda p1,p2: abs( (p2[1]-p1[1])/(p2[0]-p1[0]) )
+        slope_xy = lambda p1,p2: abs( (p2[0]-p1[0])/(p2[1]-p1[1]) )
+
+        p = path[0]
+        idx = 1
+
+        while idx != len(path):
+            try:
+                if slope_yx(p,path[idx]) < EPS or slope_xy(p,path[idx]) < EPS:
+                    path[idx] = 0
+                else:
+                    p = path[idx]
+            except ZeroDivisionError: #one of the slopes are 0 so line is straight
+                path[idx] = 0
+            idx+=1
+        
+        return [i for i in path if i!=0]
+
 
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point
         neighbors = []
-        step = 0.5
+        step = 0.25
         for (dx, dy) in [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]:
             u, v = self.xy_to_pixel(x + dx, y + dy)
             if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
