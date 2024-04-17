@@ -417,9 +417,6 @@ class Map():
                     n_obj.set_fscore(tentative_gscore + h(n_obj.pose,goal))
                     if n_obj not in q:
                         q.put(n_obj)
-
-
-
     
     def bfs(self, start: Tuple[float, float], goal: Tuple[float, float]):
         """
@@ -496,8 +493,16 @@ class Map():
         step = 0.25
         for (dx, dy) in [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]:
             u, v = self.xy_to_pixel(x + dx, y + dy)
-            if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
+            if not self.is_free(u, v):
+                break
+            if (0 <= u and u < self._width) and (0 <= v and v < self._height):
                 neighbors.append((x + dx, y + dy)) 
+        
+        if neighbors == []:
+            for (dx, dy) in [(-step/2, 0), (0, step/2), (step/2, 0), (0, -step/2), (step/2, step/2), (step/2, -step/2), (-step/2, step/2), (-step/2, -step/2)]:
+                u, v = self.xy_to_pixel(x + dx, y + dy)
+                if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
+                    neighbors.append((x + dx, y + dy)) 
 
         return neighbors
 
