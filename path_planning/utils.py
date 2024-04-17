@@ -7,6 +7,9 @@ from std_msgs.msg import Header
 import os
 from typing import List, Tuple
 import json
+import random
+import math
+import dubins
 
 from tf_transformations import euler_from_quaternion
 
@@ -239,6 +242,7 @@ class LineTrajectory:
         return header
 
 class Map():
+
     def __init__(self, occupany_grid) -> None:
         self._height = occupany_grid.info.height
         self._width = occupany_grid.info.width
@@ -259,6 +263,9 @@ class Map():
         # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
         self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+
+        self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
+        self.MAX_DIST = 5
 
     @property
     def height(self) -> int:
@@ -352,6 +359,113 @@ class Map():
             path.append(i)
         
         return path[::-1] #path start -> goal in tuples of x,y point nodes
+
+    def rrt(self, start: Tuple[float, float], goal: Tuple[float, float]):
+        ## NOTES:
+        # Need to implement max length of a line segment
+        # Dynamics on trajectories
+        # Even RRT* might be suboptimal for compute time? Probably compare
+        # Divide by zero protection in straight path
+
+        class Node():
+            def __init__(self, path, loc):
+                self.path = path
+                self.loc = loc
+                self.parent = None
+                self.children = []
+
+        def dist(loc1, loc2):
+            return (loc1[0] - loc2[0])**2 + (loc1[1] - loc2[1])**2
+
+        def find_nearest(loc, parent):
+            min_dist = dist(parent.loc, loc)
+            near_node = parent
+
+            for child in parent.children:
+                near_child, child_dist = find_nearest(loc, child)
+
+                if child_dist <= min_dist:
+                    min_dist = child_dist
+                    near_node = near_child
+
+            return near_node, min_dist
+
+        def straight_path(begin, end):
+            dy = end[1] - begin[1]
+            dx = end[0] - begin[0]
+            
+            length = math.sqrt(dist(begin, end))
+            if length > self.MAX_DIST:
+                end = (begin[0] + dx / length * self.MAX_DIST, begin[1] + dy / length * self.MAX_DIST)
+
+            slope = dy / dx 
+
+            step = self.x_step if begin[0] < end[0] else -self.x_step
+
+            path = [end]
+            stepped = (end[0] - step, end[1] - slope * step)
+
+            while (stepped[0] > begin[0] and begin[0] < end[0]) or (stepped[0] < begin[0] and begin[0] > end[0]):
+                path.append(stepped)
+                stepped = (stepped[0] - step, stepped[1] - slope * step)
+
+            return path, end
+
+        def collision_free(path):
+            for point in path:
+                u, v = self.xy_to_pixel(point[0], point[1])
+                if not self.is_free(u, v):
+                    return False
+            
+            return True
+
+        def path_to(node):
+            full_path = node.path
+
+            if node.parent != None:
+                full_path = full_path + path_to(node.parent)
+
+            return full_path
+
+        # Add start to the tree
+        head = Node([start], start)
+        previous = head
+
+        # While previous point was not goal
+        samples = 0
+        max_samples = 50000
+        while previous.loc != goal and samples < max_samples: ## THIS TUPLE COMPARISON MIGHT NOT WORK, IDK
+
+            # Pick a random grid cell or sample goal with set probability
+            if random.random() > 0.15:
+                target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
+                target = self.pixel_to_xy(target[0], target[1])
+            else:
+                target = goal
+
+            # Find the nearest node in the tree
+            nearest, _ = find_nearest(target, head)
+
+            # Extend the newest point to the nearest node
+            nearest_path, act_target = straight_path(nearest.loc, target)
+
+            # If the extended path has no collisions
+            if collision_free(nearest_path):
+            
+                # Add the newest point to the tree
+                newest_node = Node(nearest_path, act_target)
+                newest_node.parent = nearest
+                nearest.children.append(newest_node)
+
+                # Set this new point as our previous node
+                previous = newest_node
+
+            samples += 1
+
+        if samples < max_samples:
+            return path_to(previous)
+        else:
+            return None
 
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point

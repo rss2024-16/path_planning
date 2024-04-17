@@ -71,6 +71,7 @@ class PathPlan(Node):
         """
         New initial pose (PoseWithCovarianceStamped)
         """
+        self.get_logger().info("Pose")
         self.s = pose.pose.pose.position
         if self.t is not None: 
             self.plan_path(self.s, self.t)
@@ -79,6 +80,7 @@ class PathPlan(Node):
         """
         New goal pose (PoseStamped)
         """
+        self.get_logger().info("Goal")
         self.t = msg.pose.position
         if self.s is not None: 
             self.plan_path(self.s, self.t)
@@ -100,7 +102,9 @@ class PathPlan(Node):
         s = (self.s.x, self.s.y)
         t = (self.t.x, self.t.y)
 
-        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        path = self.occ_map.rrt(s, t)
+        self.get_logger().info(str(path))
         for p in path:
             self.trajectory.addPoint(p)
 
