@@ -22,9 +22,11 @@ import cv2
 EPSILON = 0.00000000001
 
 ''' These data structures can be used in the search function
+First run
+ros2 launch path_planning sim_plan.launch.xml
+then 
+ros2 launch racecar_simulator simulate.launch.xml
 '''
-
-
 class LineTrajectory:
     """ A class to wrap and work with piecewise linear trajectories. """
 
@@ -249,6 +251,10 @@ class LineTrajectory:
         return header
 
 class Node():
+    """
+    Node class for search: each node represents a state of the path with an associated
+    pose, parent(previous node), gscore = cost, and fscore = heuristic
+    """
     def __init__(self,position,fscore=float('inf'),gscore=float('inf'),parent=None):
         self._pose = position
         self._fscore = fscore
@@ -256,31 +262,27 @@ class Node():
         self._parent = parent
 
     @property
-    def pose(self):
-        return self._pose
+    def pose(self): return self._pose
     
     @property
-    def fscore(self):
-        return self._fscore
+    def fscore(self): return self._fscore
     
     @property
-    def gscore(self):
-        return self._gscore
+    def gscore(self): return self._gscore
     
     @property
-    def parent(self):
-        return self._parent
+    def parent(self): return self._parent
     
-    def set_gscore(self,score):
-        self._gscore = score
+    def set_gscore(self,score): self._gscore = score
     
-    def set_fscore(self,score):
-        self._fscore = score
+    def set_fscore(self,score): self._fscore = score
 
-    def __lt__(self,other):
-        return self.fscore < other.fscore
+    def __lt__(self,other): return self.fscore < other.fscore
     
     def extract_path(self):
+        """
+        Extracts path from start node to current node
+        """
         curr = self
         path = [curr.pose]
         while curr.parent is not None:
@@ -289,6 +291,9 @@ class Node():
         return path[::-1]
 
 class PriorityQueue:
+    """
+    Priority Queue implementation using heapq
+    """
     def __init__(self):
         self.elements = []
         self.element_set = set()
@@ -307,7 +312,10 @@ class PriorityQueue:
         return item.pose in self.element_set
 
 class Map():
-
+    """
+    Occupancy Grid gives information about the location of obstacles
+    grid.data lists the occupancy values of map cells: 100 = occupied, 0 = free, -1 = unknown
+    """
     def __init__(self, occupany_grid) -> None:
         self._height = occupany_grid.info.height
         self._width = occupany_grid.info.width
@@ -329,6 +337,7 @@ class Map():
         
         # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
+        #here we are dilating the map in order to avoid cutting corners
         self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
         self.grid = dilation(self.grid,square(10))
         cv2.imwrite('test.png',self.grid)
@@ -337,19 +346,15 @@ class Map():
         self.MAX_DIST = 5
 
     @property
-    def height(self) -> int:
-        return self._height
+    def height(self) -> int: return self._height
 
     @property
-    def width(self) -> int:
-        return self._width  
+    def width(self) -> int: return self._width  
 
     @property
-    def resolution(self) -> float:
-        return self._resolution   
+    def resolution(self) -> float: return self._resolution   
 
-    def __len__(self) -> int:
-        return self._height * self._width   
+    def __len__(self) -> int: return self._height * self._width   
 
     def xy_to_pixel(self, x: float, y: float) -> Tuple[int, int]:
         """
@@ -375,7 +380,7 @@ class Map():
         """
         pixel = np.array([[u], [v], [0]])
 
-        pixel = pixel * self._resolution
+        pixel = pixel * self._resolution 
 
         _, _, yaw = euler_from_quaternion(self.origin_o)
 
@@ -504,6 +509,9 @@ class Map():
 
 
     def rrt(self, start: Tuple[float, float], goal: Tuple[float, float]):
+        """
+        RRT done in continuous space, without discretization
+        """
         ## NOTES:
         # Need to implement max length of a line segment
         # Dynamics on trajectories
