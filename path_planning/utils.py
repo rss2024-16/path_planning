@@ -10,6 +10,8 @@ import json
 
 from tf_transformations import euler_from_quaternion
 
+import heapq
+
 EPSILON = 0.00000000001
 
 ''' These data structures can be used in the search function
@@ -229,6 +231,7 @@ class LineTrajectory:
         self.publish_start_point(duration=duration)
         self.publish_trajectory(duration=duration)
         self.publish_end_point(duration=duration)
+        print("Path published!")
 
     def make_header(self, frame_id, stamp=None):
         if stamp == None:
@@ -237,6 +240,64 @@ class LineTrajectory:
         header.stamp = stamp
         header.frame_id = frame_id
         return header
+
+class Node():
+    def __init__(self,position,fscore=float('inf'),gscore=float('inf'),parent=None):
+        self._pose = position
+        self._fscore = fscore
+        self._gscore = gscore
+        self._parent = parent
+
+    @property
+    def pose(self):
+        return self._pose
+    
+    @property
+    def fscore(self):
+        return self._fscore
+    
+    @property
+    def gscore(self):
+        return self._gscore
+    
+    @property
+    def parent(self):
+        return self._parent
+    
+    def set_gscore(self,score):
+        self._gscore = score
+    
+    def set_fscore(self,score):
+        self._fscore = score
+
+    def __lt__(self,other):
+        return self.fscore < other.fscore
+    
+    def extract_path(self):
+        curr = self
+        path = [curr.pose]
+        while curr.parent is not None:
+            path.append(curr.parent.pose)
+            curr = curr.parent
+        return path[::-1]
+
+class PriorityQueue:
+    def __init__(self):
+        self.elements = []
+        self.element_set = set()
+
+    def empty(self):
+        return len(self.elements) == 0
+
+    def put(self, item):
+        heapq.heappush(self.elements, item)
+        self.element_set.add(item.pose)
+
+    def get(self):
+        return heapq.heappop(self.elements)
+    
+    def __contains__(self,item):
+        return item.pose in self.element_set
 
 class Map():
     def __init__(self, occupany_grid) -> None:
@@ -313,6 +374,46 @@ class Map():
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
+    
+    def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
+        start_pose = self.discretize_point(start)
+        goal = self.discretize_point(goal)
+
+        h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
+
+        nodelookup = {}
+
+        start = Node(start_pose,parent=None,gscore=0,fscore=h(start_pose,goal))
+        nodelookup[start_pose] = start
+
+        q = PriorityQueue()
+        q.put(start)
+        # parent = {start: None}
+
+        while not q.empty():
+            # print(q.element_set)
+            node = q.get()
+
+            if node.pose == goal:
+                # self.get_logger().info("Goal reached")
+                return node.extract_path()
+            
+            for n in self.get_neighbors(node.pose):
+                try:
+                    n_obj = nodelookup[n]
+                except KeyError:
+                    n_obj = Node(n,parent=node)
+                    nodelookup[n] = n_obj
+
+                tentative_gscore = node.gscore + h(node.pose,n_obj.pose)
+                if tentative_gscore < n_obj.gscore:
+                    n_obj.set_gscore(tentative_gscore)
+                    n_obj.set_fscore(tentative_gscore + h(n_obj.pose,goal))
+                    if n_obj not in q:
+                        q.put(n_obj)
+
+
+
     
     def bfs(self, start: Tuple[float, float], goal: Tuple[float, float]):
         """
