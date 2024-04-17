@@ -13,6 +13,8 @@ import dubins
 
 from tf_transformations import euler_from_quaternion
 
+import heapq
+
 EPSILON = 0.00000000001
 
 ''' These data structures can be used in the search function
@@ -232,6 +234,7 @@ class LineTrajectory:
         self.publish_start_point(duration=duration)
         self.publish_trajectory(duration=duration)
         self.publish_end_point(duration=duration)
+        print("Path published!")
 
     def make_header(self, frame_id, stamp=None):
         if stamp == None:
@@ -240,6 +243,64 @@ class LineTrajectory:
         header.stamp = stamp
         header.frame_id = frame_id
         return header
+
+class Node():
+    def __init__(self,position,fscore=float('inf'),gscore=float('inf'),parent=None):
+        self._pose = position
+        self._fscore = fscore
+        self._gscore = gscore
+        self._parent = parent
+
+    @property
+    def pose(self):
+        return self._pose
+    
+    @property
+    def fscore(self):
+        return self._fscore
+    
+    @property
+    def gscore(self):
+        return self._gscore
+    
+    @property
+    def parent(self):
+        return self._parent
+    
+    def set_gscore(self,score):
+        self._gscore = score
+    
+    def set_fscore(self,score):
+        self._fscore = score
+
+    def __lt__(self,other):
+        return self.fscore < other.fscore
+    
+    def extract_path(self):
+        curr = self
+        path = [curr.pose]
+        while curr.parent is not None:
+            path.append(curr.parent.pose)
+            curr = curr.parent
+        return path[::-1]
+
+class PriorityQueue:
+    def __init__(self):
+        self.elements = []
+        self.element_set = set()
+
+    def empty(self):
+        return len(self.elements) == 0
+
+    def put(self, item):
+        heapq.heappush(self.elements, item)
+        self.element_set.add(item.pose)
+
+    def get(self):
+        return heapq.heappop(self.elements)
+    
+    def __contains__(self,item):
+        return item.pose in self.element_set
 
 class Map():
 
@@ -259,6 +320,8 @@ class Map():
                                              [np.sin(theta), np.cos(theta), 0],
                                              [0, 0, 1]
                                             ])
+        
+        self.MAX_TURN_RADIUS = 0.34
         
         # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
@@ -292,7 +355,7 @@ class Map():
         
         _, _, yaw = euler_from_quaternion(self.origin_o)
 
-        q = self.R_z(-yaw) @ q
+        q = np.matmul(self.R_z(-yaw),q)
 
         q = q / self._resolution
 
@@ -310,7 +373,7 @@ class Map():
 
         _, _, yaw = euler_from_quaternion(self.origin_o)
 
-        q = self.R_z(yaw) @ pixel
+        q = np.matmul(self.R_z(yaw),pixel)
 
         q = q + self.origin_p
 
@@ -320,6 +383,47 @@ class Map():
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
+
+    
+    def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
+        '''
+        simple alg taken from 
+        https://en.wikipedia.org/wiki/A*_search_algorithm
+        '''
+        start_pose = self.discretize_point(start)
+        goal = self.discretize_point(goal)
+
+        h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
+        #heuristic is just Euclidean distance
+
+        nodelookup = {}
+
+        start = Node(start_pose,parent=None,gscore=0,fscore=h(start_pose,goal))
+        nodelookup[start_pose] = start
+
+        q = PriorityQueue()
+        q.put(start)
+
+        while not q.empty():
+            node = q.get()
+
+            if node.pose == goal:
+                return node.extract_path()
+            
+            for n in self.get_neighbors(node.pose):
+                try:
+                    n_obj = nodelookup[n]
+                except KeyError:
+                    n_obj = Node(n,parent=node)
+                    nodelookup[n] = n_obj
+
+                tentative_gscore = node.gscore + h(node.pose,n_obj.pose)
+
+                if tentative_gscore < n_obj.gscore:
+                    n_obj.set_gscore(tentative_gscore)
+                    n_obj.set_fscore(tentative_gscore + h(n_obj.pose,goal))
+                    if n_obj not in q:
+                        q.put(n_obj)
     
     def bfs(self, start: Tuple[float, float], goal: Tuple[float, float]):
         """
@@ -350,7 +454,7 @@ class Map():
 
         # if no path was found
         if end not in parent:
-            return None
+            return []
         
         i = end
         path = [end]
@@ -359,6 +463,36 @@ class Map():
             path.append(i)
         
         return path[::-1] #path start -> goal in tuples of x,y point nodes
+    
+    def generate_circle(self,point: Tuple[float,float]):
+        u,v = self.xy_to_pixel(point)
+    
+    def prune_path(self,path):
+        '''
+        gets rid of unnecessary (low slope) points
+
+        need to fix
+        '''
+        EPS = 0.01
+
+        slope_yx = lambda p1,p2: abs( (p2[1]-p1[1])/(p2[0]-p1[0]) )
+        slope_xy = lambda p1,p2: abs( (p2[0]-p1[0])/(p2[1]-p1[1]) )
+
+        p = path[0]
+        idx = 1
+
+        while idx != len(path):
+            try:
+                if slope_yx(p,path[idx]) < EPS or slope_xy(p,path[idx]) < EPS:
+                    path[idx] = 0
+                else:
+                    p = path[idx]
+            except ZeroDivisionError: #one of the slopes are 0 so line is straight
+                path[idx] = 0
+            idx+=1
+        
+        return [i for i in path if i!=0]
+
 
     def rrt(self, start: Tuple[float, float], goal: Tuple[float, float]):
         ## NOTES:
@@ -470,11 +604,19 @@ class Map():
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point
         neighbors = []
-
-        for (dx, dy) in [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]:
+        step = 0.25
+        for (dx, dy) in [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]:
             u, v = self.xy_to_pixel(x + dx, y + dy)
-            if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
+            if not self.is_free(u, v):
+                break
+            if (0 <= u and u < self._width) and (0 <= v and v < self._height):
                 neighbors.append((x + dx, y + dy)) 
+        
+        if neighbors == []:
+            for (dx, dy) in [(-step/2, 0), (0, step/2), (step/2, 0), (0, -step/2), (step/2, step/2), (step/2, -step/2), (-step/2, step/2), (-step/2, -step/2)]:
+                u, v = self.xy_to_pixel(x + dx, y + dy)
+                if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
+                    neighbors.append((x + dx, y + dy)) 
 
         return neighbors
 

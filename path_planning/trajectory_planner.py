@@ -6,8 +6,6 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory, Map
 
-import numpy as np
-
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
     current car pose.
@@ -50,11 +48,6 @@ class PathPlan(Node):
         )
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
-
-        # self.R_z = lambda theta: np.array([ [np.cos(theta), -np.sin(theta), 0],
-        #                                      [np.sin(theta), np.cos(theta), 0],
-        #                                      [0, 0, 1]
-        #                                     ])
         
         self.occ_map = None
         self.s = None
@@ -74,7 +67,7 @@ class PathPlan(Node):
         self.get_logger().info("Pose")
         self.s = pose.pose.pose.position
         if self.t is not None: 
-            self.plan_path(self.s, self.t)
+            self.plan_path()
 
     def goal_cb(self, msg):
         """
@@ -83,16 +76,10 @@ class PathPlan(Node):
         self.get_logger().info("Goal")
         self.t = msg.pose.position
         if self.s is not None: 
-            self.plan_path(self.s, self.t)
-        # p = msg.pose.position
-        # self.get_logger().info(f'old x,y {(p.x,p.y)}') #u, v
+            self.get_logger().info(f'Finding trajectory...')
+            self.plan_path()
 
-        # u,v = self.occ_map.xy_to_pixel(p.x, p.y)
-        # self.get_logger().info(f'u,v {(u,v)}') #u, v
-        # x,y = self.occ_map.pixel_to_xy(u , v)
-        # self.get_logger().info(f'new x,y {(x,y)}') #u, v
-
-    def plan_path(self, start_point, end_point):
+    def plan_path(self):
         """
         start_point: Ros2 Point
         end_point: Ros2 Point
@@ -103,8 +90,12 @@ class PathPlan(Node):
         t = (self.t.x, self.t.y)
 
         #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        path = self.occ_map.rrt(s, t)
-        self.get_logger().info(str(path))
+        #path = self.occ_map.rrt(s, t)
+        
+        path = self.occ_map.astar(s, t)
+        path = self.occ_map.prune_path(path)
+        
+        if len(path) == 0: self.get_logger().info("No path found!")
         for p in path:
             self.trajectory.addPoint(p)
 
