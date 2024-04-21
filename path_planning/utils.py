@@ -9,15 +9,14 @@ from typing import List, Tuple
 import json
 import random
 import math
-import dubins
 
 from tf_transformations import euler_from_quaternion
 
-from skimage.morphology import dilation
-from skimage.morphology import square
+# from skimage.morphology import dilation
+# from skimage.morphology import square
 
 import heapq
-import cv2
+# import cv2
 
 EPSILON = 0.00000000001
 
@@ -329,9 +328,10 @@ class Map():
         
         # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
-        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = dilation(self.grid,square(10))
-        cv2.imwrite('test.png',self.grid)
+        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        # self.grid = dilation(self.grid,square(10))
+        # cv2.imwrite('test.png',self.grid)
+        self.grid = np.load('/root/racecar_ws/src/path_planning/path_planning/grid.npy')
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
         self.MAX_DIST = 5

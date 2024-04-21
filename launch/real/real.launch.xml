@@ -6,10 +6,10 @@
         <param from="$(find-pkg-share path_planning)/config/real/config.yaml"/>
     </node>
     <node pkg="localization" exec="particle_filter" name="particle_filter" output="screen">
-        <param from="$(find-pkg-share path_planning)/config/real/pf_config.yaml"/>
+        <param from="$(find-pkg-share localization)/params.yaml"/>
     </node>
-    <node pkg="safety_controller" exec="safety_controller" name="safety_controller" output="screen">
-        <param from="$(find-pkg-share path_planning)/config/real/safety_controller_config.yaml"/>
+    <node pkg="wall_follower" exec="safety_controller" name="safety_controller" output="screen">
+        <param from="$(find-pkg-share wall_follower)/robotparams.yaml"/>
     </node>
     <!-- need to also launch the safety controller as stated in readme probably -->
 </launch>

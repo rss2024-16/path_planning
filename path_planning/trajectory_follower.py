@@ -31,7 +31,7 @@ class PurePursuit(Node):
         self.wheelbase_length = 0.3  # FILL IN #
 
         self.MIN_SPEED = 1.6
-        self.MAX_SPEED = 8.0
+        self.MAX_SPEED = 2.5
 
         self.MAX_LOOKAHEAD = 3.0
         self.MIN_LOOKAHEAD = 0.25
@@ -187,7 +187,7 @@ class PurePursuit(Node):
             relative_x, relative_y = closest_point[:2]
 
             slope = relative_y/relative_x
-            self.get_logger().info(f'{slope}')
+            # self.get_logger().info(f'{slope}')
 
             self.speed = 6/(10*abs(slope))
             if self.speed > self.MAX_SPEED:
