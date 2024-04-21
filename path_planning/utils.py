@@ -9,14 +9,15 @@ from typing import List, Tuple
 import json
 import random
 import math
-import dubins
+# import dubins
 
 from tf_transformations import euler_from_quaternion
 
-from skimage.morphology import dilation
-from skimage.morphology import square
+from skimage.morphology import dilation, erosion
+from skimage.morphology import square, disk
 
 import heapq
+from collections import deque
 import cv2
 
 EPSILON = 0.00000000001
@@ -335,11 +336,10 @@ class Map():
         
         self.MAX_TURN_RADIUS = 0.34
         
-        # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
         #here we are dilating the map in order to avoid cutting corners
         self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = dilation(self.grid,square(10))
+        self.grid = erosion(self.grid, disk(8))
         cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
@@ -397,7 +397,6 @@ class Map():
     
     def blur_grid(self):
         kernel_size = 5
-
     
     def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
         '''
@@ -450,13 +449,13 @@ class Map():
         goal = self.discretize_point(goal)
         
         visited = {start}
-        queue = [start]
+        queue = deque([start])
         parent = {start: None}
 
         end = None
 
         while queue:
-            current = queue.pop(0)  
+            current = queue.popleft() 
             if current == goal:
                 end = current
                 break
@@ -506,7 +505,6 @@ class Map():
             idx+=1
         
         return [i for i in path if i!=0]
-
 
     def rrt(self, start: Tuple[float, float], goal: Tuple[float, float]):
         """
@@ -621,20 +619,52 @@ class Map():
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point
         neighbors = []
-        step = 0.5
-        for (dx, dy) in [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]:
+
+        # radius = 8
+        step = 1.0
+        possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
+        for (dx, dy) in possibilities:
             u, v = self.xy_to_pixel(x + dx, y + dy)
             if not self.is_free(u, v):
+                neighbors = []
                 break
-            if (0 <= u and u < self._width) and (0 <= v and v < self._height):
+            if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
                 neighbors.append((x + dx, y + dy)) 
         
-        if neighbors == []:
-            for (dx, dy) in [(-step/2, 0), (0, step/2), (step/2, 0), (0, -step/2), (step/2, step/2), (step/2, -step/2), (-step/2, step/2), (-step/2, -step/2)]:
-                u, v = self.xy_to_pixel(x + dx, y + dy)
-                if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
-                    neighbors.append((x + dx, y + dy)) 
+        for (dx, dy) in possibilities:
+            u, v = self.xy_to_pixel(x + dx/2, y + dy/2)
+            if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
+                neighbors.append((x + dx/2, y + dy/2)) 
 
+
+
+        # radius = 4
+        # step = 0.5
+        # possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
+        # for i, (dx, dy) in enumerate(possibilities):
+        #     u, v = self.xy_to_pixel(x + dx, y + dy)
+        #     if not self.is_free(u, v):
+        #         break
+        #     if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
+        #         neighbors.append((x + dx, y + dy)) 
+
+
+
+
+        # cuts corner on path pruning
+        # radius = 7
+        # step = 1.0
+        # possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
+        # for (dx, dy) in possibilities:
+        #     u, v = self.xy_to_pixel(x + dx, y + dy)
+        #     if not self.is_free(u, v):
+        #         u, v = self.xy_to_pixel(x + dx/2, y + dy/2)
+        #         if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
+        #             neighbors.append((x + dx/2, y + dy/2))
+
+        #     elif (0 <= u and u < self._width) and (0 <= v and v < self._height):
+        #         neighbors.append((x + dx, y + dy))  
+        
         return neighbors
 
     def discretize_point(self, point: Tuple[float, float]) -> Tuple[float, float]:
