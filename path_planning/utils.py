@@ -12,8 +12,8 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-# from skimage.morphology import dilation
-# from skimage.morphology import square
+from skimage.morphology import dilation, erosion
+from skimage.morphology import square, disk
 
 import heapq
 from collections import deque
@@ -401,9 +401,6 @@ class Map():
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
-    
-    def blur_grid(self):
-        kernel_size = 5
     
     def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
         '''
