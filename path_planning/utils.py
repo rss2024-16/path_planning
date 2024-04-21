@@ -16,14 +16,18 @@ from tf_transformations import euler_from_quaternion
 # from skimage.morphology import square
 
 import heapq
+from collections import deque
 # import cv2
+
 
 EPSILON = 0.00000000001
 
 ''' These data structures can be used in the search function
+First run
+ros2 launch path_planning sim_plan.launch.xml
+then 
+ros2 launch racecar_simulator simulate.launch.xml
 '''
-
-
 class LineTrajectory:
     """ A class to wrap and work with piecewise linear trajectories. """
 
@@ -248,6 +252,10 @@ class LineTrajectory:
         return header
 
 class Node():
+    """
+    Node class for search: each node represents a state of the path with an associated
+    pose, parent(previous node), gscore = cost, and fscore = heuristic
+    """
     def __init__(self,position,fscore=float('inf'),gscore=float('inf'),parent=None):
         self._pose = position
         self._fscore = fscore
@@ -255,31 +263,27 @@ class Node():
         self._parent = parent
 
     @property
-    def pose(self):
-        return self._pose
+    def pose(self): return self._pose
     
     @property
-    def fscore(self):
-        return self._fscore
+    def fscore(self): return self._fscore
     
     @property
-    def gscore(self):
-        return self._gscore
+    def gscore(self): return self._gscore
     
     @property
-    def parent(self):
-        return self._parent
+    def parent(self): return self._parent
     
-    def set_gscore(self,score):
-        self._gscore = score
+    def set_gscore(self,score): self._gscore = score
     
-    def set_fscore(self,score):
-        self._fscore = score
+    def set_fscore(self,score): self._fscore = score
 
-    def __lt__(self,other):
-        return self.fscore < other.fscore
+    def __lt__(self,other): return self.fscore < other.fscore
     
     def extract_path(self):
+        """
+        Extracts path from start node to current node
+        """
         curr = self
         path = [curr.pose]
         while curr.parent is not None:
@@ -288,6 +292,9 @@ class Node():
         return path[::-1]
 
 class PriorityQueue:
+    """
+    Priority Queue implementation using heapq
+    """
     def __init__(self):
         self.elements = []
         self.element_set = set()
@@ -306,7 +313,10 @@ class PriorityQueue:
         return item.pose in self.element_set
 
 class Map():
-
+    """
+    Occupancy Grid gives information about the location of obstacles
+    grid.data lists the occupancy values of map cells: 100 = occupied, 0 = free, -1 = unknown
+    """
     def __init__(self, occupany_grid) -> None:
         self._height = occupany_grid.info.height
         self._width = occupany_grid.info.width
@@ -326,30 +336,32 @@ class Map():
         
         self.MAX_TURN_RADIUS = 0.34
         
-        # probs faster to use 1D array rep 
         #2d (int) array of pixel coords indexed by grid[v][u] 
+
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
         # self.grid = dilation(self.grid,square(10))
         # cv2.imwrite('test.png',self.grid)
-        self.grid = np.load('/root/racecar_ws/src/path_planning/path_planning/grid.npy')
+        # self.grid = np.load('/root/racecar_ws/src/path_planning/path_planning/grid.npy')
+
+        #here we are dilating the map in order to avoid cutting corners
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = erosion(self.grid, disk(8))
+        np.save('grid.npy',self.grid)
+        cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
         self.MAX_DIST = 5
 
     @property
-    def height(self) -> int:
-        return self._height
+    def height(self) -> int: return self._height
 
     @property
-    def width(self) -> int:
-        return self._width  
+    def width(self) -> int: return self._width  
 
     @property
-    def resolution(self) -> float:
-        return self._resolution   
+    def resolution(self) -> float: return self._resolution   
 
-    def __len__(self) -> int:
-        return self._height * self._width   
+    def __len__(self) -> int: return self._height * self._width   
 
     def xy_to_pixel(self, x: float, y: float) -> Tuple[int, int]:
         """
@@ -375,7 +387,7 @@ class Map():
         """
         pixel = np.array([[u], [v], [0]])
 
-        pixel = pixel * self._resolution
+        pixel = pixel * self._resolution 
 
         _, _, yaw = euler_from_quaternion(self.origin_o)
 
@@ -392,7 +404,6 @@ class Map():
     
     def blur_grid(self):
         kernel_size = 5
-
     
     def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
         '''
@@ -445,13 +456,13 @@ class Map():
         goal = self.discretize_point(goal)
         
         visited = {start}
-        queue = [start]
+        queue = deque([start])
         parent = {start: None}
 
         end = None
 
         while queue:
-            current = queue.pop(0)  
+            current = queue.popleft() 
             if current == goal:
                 end = current
                 break
@@ -502,8 +513,10 @@ class Map():
         
         return [i for i in path if i!=0]
 
-
     def rrt(self, start: Tuple[float, float], goal: Tuple[float, float]):
+        """
+        RRT done in continuous space, without discretization
+        """
         ## NOTES:
         # Need to implement max length of a line segment
         # Dynamics on trajectories
@@ -613,20 +626,52 @@ class Map():
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point
         neighbors = []
-        step = 0.5
-        for (dx, dy) in [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]:
+
+        # radius = 8
+        step = 1.0
+        possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
+        for (dx, dy) in possibilities:
             u, v = self.xy_to_pixel(x + dx, y + dy)
             if not self.is_free(u, v):
+                neighbors = []
                 break
-            if (0 <= u and u < self._width) and (0 <= v and v < self._height):
+            if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
                 neighbors.append((x + dx, y + dy)) 
         
-        if neighbors == []:
-            for (dx, dy) in [(-step/2, 0), (0, step/2), (step/2, 0), (0, -step/2), (step/2, step/2), (step/2, -step/2), (-step/2, step/2), (-step/2, -step/2)]:
-                u, v = self.xy_to_pixel(x + dx, y + dy)
-                if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u, v):
-                    neighbors.append((x + dx, y + dy)) 
+        for (dx, dy) in possibilities:
+            u, v = self.xy_to_pixel(x + dx/2, y + dy/2)
+            if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
+                neighbors.append((x + dx/2, y + dy/2)) 
 
+
+
+        # radius = 4
+        # step = 0.5
+        # possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
+        # for i, (dx, dy) in enumerate(possibilities):
+        #     u, v = self.xy_to_pixel(x + dx, y + dy)
+        #     if not self.is_free(u, v):
+        #         break
+        #     if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
+        #         neighbors.append((x + dx, y + dy)) 
+
+
+
+
+        # cuts corner on path pruning
+        # radius = 7
+        # step = 1.0
+        # possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
+        # for (dx, dy) in possibilities:
+        #     u, v = self.xy_to_pixel(x + dx, y + dy)
+        #     if not self.is_free(u, v):
+        #         u, v = self.xy_to_pixel(x + dx/2, y + dy/2)
+        #         if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
+        #             neighbors.append((x + dx/2, y + dy/2))
+
+        #     elif (0 <= u and u < self._width) and (0 <= v and v < self._height):
+        #         neighbors.append((x + dx, y + dy))  
+        
         return neighbors
 
     def discretize_point(self, point: Tuple[float, float]) -> Tuple[float, float]:

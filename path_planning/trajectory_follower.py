@@ -47,7 +47,7 @@ class PurePursuit(Node):
                                                self.drive_topic,
                                                1)
         
-        self.pose_sub = self.create_subscription(Odometry,'/pf/pose/odom',self.pose_callback,1)
+        self.pose_sub = self.create_subscription(Odometry, self.odom_topic, self.pose_callback,1)
 
         self.pointpub = self.create_publisher(MarkerArray,'/points',1)
 
