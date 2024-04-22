@@ -12,12 +12,12 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-from skimage.morphology import dilation, erosion
-from skimage.morphology import square, disk
+# from skimage.morphology import dilation, erosion
+# from skimage.morphology import square, disk
 
 import heapq
 from collections import deque
-# import cv2
+import cv2
 
 
 EPSILON = 0.00000000001
@@ -341,13 +341,13 @@ class Map():
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
         # self.grid = dilation(self.grid,square(10))
         # cv2.imwrite('test.png',self.grid)
-        # self.grid = np.load('/root/racecar_ws/src/path_planning/path_planning/grid.npy')
+        self.grid = np.load('/root/racecar_ws/grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
-        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = erosion(self.grid, disk(8))
-        np.save('grid.npy',self.grid)
-        cv2.imwrite('test.png',self.grid)
+        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        # self.grid = erosion(self.grid, disk(8))
+        # np.save('grid.npy',self.grid)
+        # cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
         self.MAX_DIST = 5
@@ -492,15 +492,21 @@ class Map():
         '''
         EPS = 0.01
 
-        slope_yx = lambda p1,p2: abs( (p2[1]-p1[1])/(p2[0]-p1[0]) )
-        slope_xy = lambda p1,p2: abs( (p2[0]-p1[0])/(p2[1]-p1[1]) )
-
         p = path[0]
+
         idx = 1
 
         while idx != len(path)-1:
+            diff = np.array(p) - np.array(path[idx])
+            orientation = np.arctan2(diff[1],diff[0])
+            diff = np.array([diff[0],diff[1],orientation])
+            R = self.R_z(orientation)
+
+            relative = np.matmul(diff,R)
+            slope = relative[0]/relative[1]
+            
             try:
-                if slope_yx(p,path[idx]) < EPS or slope_xy(p,path[idx]) < EPS:
+                if slope < EPS:
                     path[idx] = 0
                 else:
                     p = path[idx]
