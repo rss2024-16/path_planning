@@ -483,7 +483,7 @@ class Map():
     
     def generate_circle(self,point: Tuple[float,float]):
         u,v = self.xy_to_pixel(point)
-    
+
     def prune_path(self,path):
         '''
         gets rid of unnecessary (low slope) points
@@ -510,6 +510,9 @@ class Map():
                     path[idx] = 0
                 else:
                     p = path[idx]
+                
+                prev1 = s1
+                prev2 = s2
             except ZeroDivisionError: #one of the slopes are 0 so line is straight
                 path[idx] = 0
             idx+=1
