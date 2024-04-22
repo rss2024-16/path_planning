@@ -48,6 +48,7 @@ class PathPlan(Node):
             10
         )
 
+        #Line Trajectory class in utils.py
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
         
         self.occ_map = None
@@ -73,8 +74,9 @@ class PathPlan(Node):
         pose.pose.pose.orientation.z,
         pose.pose.pose.orientation.w))
         self.s_theta = orientation[2]
-        if self.t is not None: 
-            self.plan_path()
+
+        # if self.t is not None: 
+        #     self.plan_path()
 
     def goal_cb(self, msg):
         """
@@ -94,8 +96,8 @@ class PathPlan(Node):
 
     def plan_path(self):
         """
-        start_point: Ros2 Point
-        end_point: Ros2 Point
+        start_point s: Ros2 Point
+        end_point t: Ros2 Point
         """
         self.trajectory.clear()
         
@@ -106,14 +108,19 @@ class PathPlan(Node):
         t = (self.t.x, self.t.y, self.t_theta)
 
         #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        path = self.occ_map.rrt_star(s, t)
+        #path = self.occ_map.rrt_star(s, t)
         #path = self.occ_map.rrt(s, t)
 
-        #path = self.occ_map.astar(s, t)
+        path = self.occ_map.astar(s, t)
         #path = self.occ_map.prune_path(path)
         
-        if len(path) == 0: self.get_logger().info("No path found!")
 
+        if len(path) == 0 or path is None: 
+            self.get_logger().info("No path found!")
+            return
+
+        path = self.occ_map.prune_path(path)
+        
         self.trajectory.updatePoints(path)
 
         self.traj_pub.publish(self.trajectory.toPoseArray())
