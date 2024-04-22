@@ -115,6 +115,8 @@ class PurePursuit(Node):
             return intersection_points[0]
         else:
             return intersection_points[1]
+        
+    
 
     def find_closest_point(self):
         '''
@@ -170,11 +172,12 @@ class PurePursuit(Node):
 
         R = self.transform(theta)
 
-        self.current_pose = np.array([x,y,theta])
+        #car's coordinates in global frame
+        self.current_pose = np.array([x,y,theta]) 
 
         closest_point = self.find_closest_point()
         
-        if isinstance(closest_point,bool):
+        if isinstance(closest_point,bool):  #then no more points in front of car, stop
             drive_cmd = AckermannDriveStamped()
             
             drive_cmd.drive.speed = 0.0
@@ -209,7 +212,6 @@ class PurePursuit(Node):
                 turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
 
             drive_cmd = AckermannDriveStamped()
-            
             drive_cmd.drive.speed = self.speed
             drive_cmd.drive.steering_angle = turning_angle
 
@@ -219,7 +221,7 @@ class PurePursuit(Node):
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
-        self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses])
+        self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses]) #no theta needed
 
         markers = []
         count = 0

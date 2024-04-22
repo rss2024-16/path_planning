@@ -12,12 +12,14 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-# from skimage.morphology import dilation
-# from skimage.morphology import square
+from skimage.morphology import dilation
+from skimage.morphology import square
 
 import heapq
 from collections import deque
-# import cv2
+import cv2
+
+import dubins
 
 
 EPSILON = 0.00000000001
@@ -338,16 +340,16 @@ class Map():
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
-        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        # self.grid = dilation(self.grid,square(10))
-        # cv2.imwrite('test.png',self.grid)
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = dilation(self.grid,square(10))
+        cv2.imwrite('test.png',self.grid)
         # self.grid = np.load('/root/racecar_ws/src/path_planning/path_planning/grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
-        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = erosion(self.grid, disk(8))
-        np.save('grid.npy',self.grid)
-        cv2.imwrite('test.png',self.grid)
+        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        # self.grid = erosion(self.grid, disk(8))
+        # np.save('grid.npy',self.grid)
+        # cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
         self.MAX_DIST = 5
@@ -414,6 +416,7 @@ class Map():
         goal = self.discretize_point(goal)
 
         h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
+        h = lambda x,y: dubins
         #heuristic is just Euclidean distance
 
         nodelookup = {}
