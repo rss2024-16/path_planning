@@ -35,8 +35,8 @@ class PurePursuit(Node):
         self.MIN_SPEED = 1.6
         self.MAX_SPEED = 2.5
 
-        self.MAX_LOOKAHEAD = 6.0
-        self.MIN_LOOKAHEAD = 3.0
+        self.MAX_LOOKAHEAD = 3.0
+        self.MIN_LOOKAHEAD = 0.5
 
         self.trajectory = LineTrajectory("/followed_trajectory")
         # self.get_logger().info('/followed_trajectory')
@@ -56,8 +56,6 @@ class PurePursuit(Node):
 
         self.closestpub = self.create_publisher(Marker,'/closest_point',1)
 
-        
-
         self.MAX_TURN = 0.15
         
         self.points = None
@@ -68,6 +66,9 @@ class PurePursuit(Node):
                                              [np.sin(theta), np.cos(theta), 0],
                                              [0, 0, 1]
                                             ])
+        
+        self.slopes = []
+        self.controls = []
 
         # self.tf_buffer = tf2_ros.Buffer()
         # self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -133,22 +134,26 @@ class PurePursuit(Node):
             R = self.transform(self.current_pose[2])
             pose_init = self.current_pose
             #get transform matrix between global and robot frame
+            # self.get_logger().info(f'curr_pose: {self.current_pose}')
 
             differences = self.points - self.current_pose
 
             relative_points = np.array([np.matmul(i,R) for i in differences])
-            self.get_logger().info(f'{relative_points}')
+            # self.get_logger().info(f'{relative_points}')
             #multiply each difference by transformation matrix to get
             #poses in the robot frame
 
             #check that the point is in front of current pose
-            # xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
-            DIST = 0.25
-            # filtered_points = relative_points[(xdot[0] >= .25)] #filter to only look at points ahead (same direction)
-            filtered_points = [i for i in relative_points if i[0]>=DIST]
+            xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
+
+            filtered_points = relative_points[(xdot >= self.MIN_LOOKAHEAD)] #filter to only look at points ahead (same direction)
+            
             if len(filtered_points) == 0:
-                self.get_logger().info("No points ahead of car")
-                return True
+                if xdot[-1] >= 0:
+                    filtered_points = np.array([relative_points[-1]])
+                else:
+                    # self.get_logger().info("No points ahead of car")
+                    return True
 
             distances = np.linalg.norm(filtered_points,axis=1)
 
@@ -183,47 +188,90 @@ class PurePursuit(Node):
         self.current_pose = np.array([x,y,theta]) 
 
         closest_point = self.find_closest_point()
+
+        # pure_pursuit = False
+        # PID = True
         
-        if isinstance(closest_point,bool):  #then no more points in front of car, stop
+        if isinstance(closest_point,bool):
             drive_cmd = AckermannDriveStamped()
             
             drive_cmd.drive.speed = 0.0
             drive_cmd.drive.steering_angle = 0.0
 
             self.drive_pub.publish(drive_cmd)
-            
-
+        
         elif closest_point is not None:
             relative_x, relative_y = closest_point[:2]
-
             slope = relative_y/relative_x
-            # self.get_logger().info(f'{slope}')
+            EPS = 0.05
+            if abs(slope) < EPS:
+                pure_pursuit = True
+            else:
+                pure_pursuit = False
 
-            self.speed = 6/(10*abs(slope))
-            if self.speed > self.MAX_SPEED:
-                self.speed = self.MAX_SPEED
-            elif self.speed < self.MIN_SPEED:
-                self.speed = self.MIN_SPEED
+            if not pure_pursuit:
+                
+                kp = 1.0
+                kd = 1.0/6.0
+                ki = 1.0/8.0
+                P = kp*np.arctan2(relative_y,relative_x)
+                if len(self.controls) > 5:
+                    if len(self.controls) < 10:
+                        sample = self.controls
+                    else:
+                        sample = self.controls[-10:]
 
-            # self.lookahead = np.linalg.norm(np.array([relative_x,relative_y])) / 2
-            self.lookahead = 3/(10*abs(slope))
-            if self.lookahead > self.MAX_LOOKAHEAD:
-                self.lookahead = self.MAX_LOOKAHEAD
-            elif self.lookahead < self.MIN_LOOKAHEAD:
-                self.lookahead = self.MIN_LOOKAHEAD
+                    I = -ki*np.trapz(sample)
+                    slope, _ = np.polyfit(np.arange(len(sample)),sample,1)
+                    D = -kd*slope
+                    control = P+I+D
+                else:
+                    control = P
+                
+                self.get_logger().info(f'{control}')
+                self.controls.append(control)
+                if abs(control) > self.MAX_TURN:
+                    control = self.MAX_TURN if control > 0 else -self.MAX_TURN
 
-            intersect = self.circle_intersection(slope,0,self.lookahead)
+                drive_cmd = AckermannDriveStamped()
+                drive_cmd.drive.speed = 1.6
 
-            turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
-            
-            if abs(turning_angle) > self.MAX_TURN:
-                turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
+                drive_cmd.drive.steering_angle = control
 
-            drive_cmd = AckermannDriveStamped()
-            drive_cmd.drive.speed = self.speed
-            drive_cmd.drive.steering_angle = turning_angle
+                self.drive_pub.publish(drive_cmd)
+                
 
-            self.drive_pub.publish(drive_cmd)
+            elif pure_pursuit:
+                self.slopes.append(slope)
+                # self.get_logger().info(f'{slope}')
+
+                # self.speed = 6/(10*abs(slope))
+                self.speed = 4.0
+                # if self.speed > self.MAX_SPEED:
+                #     self.speed = self.MAX_SPEED
+                # elif self.speed < self.MIN_SPEED:
+                #     self.speed = self.MIN_SPEED
+
+                # self.lookahead = np.linalg.norm(np.array([relative_x,relative_y])) / 2
+                # self.lookahead = 3/(10*abs(slope))
+                self.lookahead = 6.0
+                # if self.lookahead > self.MAX_LOOKAHEAD:
+                #     self.lookahead = self.MAX_LOOKAHEAD
+                # elif self.lookahead < self.MIN_LOOKAHEAD:
+                #     self.lookahead = self.MIN_LOOKAHEAD
+
+                intersect = self.circle_intersection(slope,0,self.lookahead)
+                turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
+                
+                if abs(turning_angle) > self.MAX_TURN:
+                    turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
+
+                drive_cmd = AckermannDriveStamped()
+                
+                drive_cmd.drive.speed = self.speed
+                drive_cmd.drive.steering_angle = turning_angle
+
+                self.drive_pub.publish(drive_cmd)
 
 
     def trajectory_callback(self, msg):
@@ -256,5 +304,9 @@ class PurePursuit(Node):
 def main(args=None):
     rclpy.init(args=args)
     follower = PurePursuit()
-    rclpy.spin(follower)
+    try:
+        rclpy.spin(follower)
+    except KeyboardInterrupt:
+        np.save('slopes',follower.slopes)
+        pass
     rclpy.shutdown()

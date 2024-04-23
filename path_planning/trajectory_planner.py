@@ -5,6 +5,7 @@ assert rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory, Map
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -66,7 +67,14 @@ class PathPlan(Node):
         New initial pose (PoseWithCovarianceStamped)
         """
         self.get_logger().info("Pose")
-        self.s = pose.pose.pose.position
+        self.s = pose.pose.pose.position   
+        orientation = euler_from_quaternion((
+        pose.pose.pose.orientation.x,
+        pose.pose.pose.orientation.y,
+        pose.pose.pose.orientation.z,
+        pose.pose.pose.orientation.w))
+        self.s_theta = orientation[2]
+
         # if self.t is not None: 
         #     self.plan_path()
 
@@ -76,6 +84,12 @@ class PathPlan(Node):
         """
         self.get_logger().info("Goal")
         self.t = msg.pose.position
+        orientation = euler_from_quaternion((
+        msg.pose.orientation.x,
+        msg.pose.orientation.y,
+        msg.pose.orientation.z,
+        msg.pose.orientation.w))
+        self.t_theta = orientation[2]
         if self.s is not None: 
             self.get_logger().info(f'Finding trajectory...')
             self.plan_path()
@@ -87,19 +101,29 @@ class PathPlan(Node):
         """
         self.trajectory.clear()
         
-        s = (self.s.x, self.s.y)
-        t = (self.t.x, self.t.y)
+        #s = (self.s.x, self.s.y)
+        #t = (self.t.x, self.t.y)
+
+        s = (self.s.x, self.s.y, self.s_theta)
+        t = (self.t.x, self.t.y, self.t_theta)
+
+        #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        #path = self.occ_map.rrt_star(s, t)
+        #path = self.occ_map.rrt(s, t)
+
+        # path = self.occ_map.astar(s, t)
+        #path = self.occ_map.prune_path(path)
+        
 
         # path = self.occ_map.rrt(s, t)
-        path = self.occ_map.rrt(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        if len(path) == 0: 
+        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        if len(path) == 0 or path is None: 
             self.get_logger().info("No path found!")
             return
 
-        path = self.occ_map.prune_path(path)
+        # path = self.occ_map.prune_path(path)
         
-        for p in path:
-            self.trajectory.addPoint(p)
+        self.trajectory.updatePoints(path)
 
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
