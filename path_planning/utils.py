@@ -371,11 +371,11 @@ class Map():
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
         # self.grid = dilation(self.grid,square(10))
         # cv2.imwrite('test.png',self.grid)
-        self.grid = np.load('/root/racecar_ws/grid.npy')
+        # self.grid = np.load('/root/racecar_ws/grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
-        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        # self.grid = erosion(self.grid, disk(8))
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = erosion(self.grid, disk(8))
         # np.save('grid.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
 
