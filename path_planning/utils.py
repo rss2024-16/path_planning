@@ -440,6 +440,7 @@ class Map():
         goal = self.discretize_point(goal)
 
         h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
+        h = lambda x,y: dubins
         #heuristic is just Euclidean distance
         # h = lambda x,y: abs( (x[1]-x[0]) + (y[1]-y[0]) )
         # h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2) * np.arctan2(y[1]-y[0],x[1]-x[0])
@@ -543,8 +544,8 @@ class Map():
                 else:
                     p = path[idx]
                 
-                prev1 = s1
-                prev2 = s2
+                # prev1 = s1
+                # prev2 = s2
             except ZeroDivisionError: #one of the slopes are 0 so line is straight
                 path[idx] = 0
             idx+=1

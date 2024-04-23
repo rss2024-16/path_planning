@@ -34,7 +34,7 @@ class PurePursuit(Node):
         self.wheelbase_length = 0.3  # FILL IN #
 
         self.MIN_SPEED = 1.6
-        self.MAX_SPEED = 2.5
+        self.MAX_SPEED = 1.6
 
         self.MAX_LOOKAHEAD = 3.0
         self.MIN_LOOKAHEAD = 0.5
@@ -46,19 +46,22 @@ class PurePursuit(Node):
                                                  "/trajectory/current",
                                                  self.trajectory_callback,
                                                  1)
+        
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
                                                self.drive_topic,
                                                1)
-        
+
         self.pose_sub = self.create_subscription(Odometry, self.odom_topic, self.pose_callback,1)
+
+        self.intersectpub = self.create_publisher(Marker, '/intersect', 1 )
 
         self.pointpub = self.create_publisher(MarkerArray,'/points',1)
         self.segmentpub = self.create_publisher(MarkerArray,'/segments',1)
 
         self.closestpub = self.create_publisher(Marker,'/closest_point',1)
 
-        self.MAX_TURN = 0.15
-        
+        self.MAX_TURN = 0.2
+
         self.points = None
         self.current_pose = None
         self.relative_points = None
@@ -115,17 +118,22 @@ class PurePursuit(Node):
         x_solutions = np.roots([a, b, c])
 
         # Find corresponding y values using the line equation
+        # publish this for debugging
         intersection_points = [(float(x_val), float(line_slope * x_val + line_intercept)) for x_val in x_solutions]
-        
+
         # +X forward, +Y left, -Y right
 
-        # if intersection_points[0][0] > 0 and intersection_points[1][0] < 0:
-        #     return intersection_points[0]
-        # elif intersection_points[0][0] < 0 and intersection_points[1][0] > 0:
-        #     return intersection_points[1]
-        # else:
-        #     return intersection_points[1]
-        return intersection_points[0]
+        if intersection_points[0][0] > 0 and intersection_points[1][0] < 0:
+            return intersection_points[0]
+        elif intersection_points[0][0] < 0 and intersection_points[1][0] > 0:
+            return intersection_points[1]
+        elif intersection_points[0][1] > 0 and self.SIDE == -1 or intersection_points[0][1] < 0 and self.SIDE == 1:
+            return intersection_points[0]
+        else:
+            return intersection_points[1]
+        
+    
+
 
     def find_closest_point(self):
         '''
@@ -196,21 +204,20 @@ class PurePursuit(Node):
 
         # R = self.transform(theta)
 
-        self.current_pose = np.array([x,y,theta])
+        #car's coordinates in global frame
+        self.current_pose = np.array([x,y,theta]) 
 
         closest_point = self.find_closest_point()
 
-        # pure_pursuit = False
-        # PID = True
-        
         if isinstance(closest_point,bool):
             drive_cmd = AckermannDriveStamped()
-            
+
             drive_cmd.drive.speed = 0.0
             drive_cmd.drive.steering_angle = 0.0
 
             self.drive_pub.publish(drive_cmd)
-        
+
+
         elif closest_point is not None:
             relative_x, relative_y = closest_point[:2]
             slope = relative_y/relative_x
@@ -376,7 +383,7 @@ class PurePursuit(Node):
         markers = []
         count = 0
         for p in self.points:
-            
+
             marker = self.to_marker(p,count)
 
             markers.append(marker)
