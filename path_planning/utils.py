@@ -350,6 +350,10 @@ class Map():
         # self.grid = erosion(self.grid, disk(8))
         # np.save('grid.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
+        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        # self.grid = erosion(self.grid, disk(8))
+        # np.save('grid.npy',self.grid)
+        # cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
         self.MAX_DIST = 5
@@ -403,9 +407,6 @@ class Map():
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
-    
-    def blur_grid(self):
-        kernel_size = 5
     
     def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
         '''
@@ -489,7 +490,7 @@ class Map():
     
     def generate_circle(self,point: Tuple[float,float]):
         u,v = self.xy_to_pixel(point)
-    
+
     def prune_path(self,path):
         '''
         gets rid of unnecessary (low slope) points
@@ -498,15 +499,21 @@ class Map():
         '''
         EPS = 0.01
 
-        slope_yx = lambda p1,p2: abs( (p2[1]-p1[1])/(p2[0]-p1[0]) )
-        slope_xy = lambda p1,p2: abs( (p2[0]-p1[0])/(p2[1]-p1[1]) )
-
         p = path[0]
+
         idx = 1
 
         while idx != len(path)-1:
+            diff = np.array(p) - np.array(path[idx])
+            orientation = np.arctan2(diff[1],diff[0])
+            diff = np.array([diff[0],diff[1],orientation])
+            R = self.R_z(orientation)
+
+            relative = np.matmul(diff,R)
+            slope = relative[0]/relative[1]
+            
             try:
-                if slope_yx(p,path[idx]) < EPS or slope_xy(p,path[idx]) < EPS:
+                if slope < EPS:
                     path[idx] = 0
                 else:
                     p = path[idx]

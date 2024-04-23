@@ -24,7 +24,9 @@ class PurePursuit(Node):
         self.declare_parameter('drive_topic', "default")
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        # self.drive_topic = '/vesc/low_level/ackermann_cmd'
+        self.drive_topic = '/vesc/input/navigation'
 
         self.lookahead = .5  # FILL IN #
         self.speed = 1.0  # FILL IN #
@@ -33,8 +35,8 @@ class PurePursuit(Node):
         self.MIN_SPEED = 1.6
         self.MAX_SPEED = 2.5
 
-        self.MAX_LOOKAHEAD = 3.0
-        self.MIN_LOOKAHEAD = 0.25
+        self.MAX_LOOKAHEAD = 6.0
+        self.MIN_LOOKAHEAD = 3.0
 
         self.trajectory = LineTrajectory("/followed_trajectory")
         # self.get_logger().info('/followed_trajectory')
@@ -43,6 +45,7 @@ class PurePursuit(Node):
                                                  "/trajectory/current",
                                                  self.trajectory_callback,
                                                  1)
+        
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
                                                self.drive_topic,
                                                1)
@@ -53,7 +56,9 @@ class PurePursuit(Node):
 
         self.closestpub = self.create_publisher(Marker,'/closest_point',1)
 
-        self.MAX_TURN = 0.34
+        
+
+        self.MAX_TURN = 0.15
         
         self.points = None
         self.current_pose = None
@@ -123,6 +128,7 @@ class PurePursuit(Node):
         Finds the closest point that is in front of the car
         '''
         if self.current_pose is not None and self.points is not None:
+            self.get_logger().info(f'curr pose: {self.current_pose}')
 
             R = self.transform(self.current_pose[2])
             pose_init = self.current_pose
@@ -131,14 +137,15 @@ class PurePursuit(Node):
             differences = self.points - self.current_pose
 
             relative_points = np.array([np.matmul(i,R) for i in differences])
+            self.get_logger().info(f'{relative_points}')
             #multiply each difference by transformation matrix to get
             #poses in the robot frame
 
             #check that the point is in front of current pose
-            xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
-
-            filtered_points = relative_points[(xdot >= 0)] #filter to only look at points ahead (same direction)
-            
+            # xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
+            DIST = 0.25
+            # filtered_points = relative_points[(xdot[0] >= .25)] #filter to only look at points ahead (same direction)
+            filtered_points = [i for i in relative_points if i[0]>=DIST]
             if len(filtered_points) == 0:
                 self.get_logger().info("No points ahead of car")
                 return True
@@ -170,7 +177,7 @@ class PurePursuit(Node):
 
         theta = orientation[2]
 
-        R = self.transform(theta)
+        # R = self.transform(theta)
 
         #car's coordinates in global frame
         self.current_pose = np.array([x,y,theta]) 
@@ -206,6 +213,7 @@ class PurePursuit(Node):
                 self.lookahead = self.MIN_LOOKAHEAD
 
             intersect = self.circle_intersection(slope,0,self.lookahead)
+
             turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
             
             if abs(turning_angle) > self.MAX_TURN:
