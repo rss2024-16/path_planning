@@ -12,12 +12,12 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-# from skimage.morphology import dilation
-# from skimage.morphology import square
+from skimage.morphology import dilation,erosion
+from skimage.morphology import square,disk
 
 import heapq
 from collections import deque
-# import cv2
+import cv2
 
 
 EPSILON = 0.00000000001
@@ -415,6 +415,9 @@ class Map():
 
         h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
         #heuristic is just Euclidean distance
+        # h = lambda x,y: abs( (x[1]-x[0]) + (y[1]-y[0]) )
+        # h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2) * np.arctan2(y[1]-y[0],x[1]-x[0])
+        #arc length
 
         nodelookup = {}
 
@@ -462,7 +465,7 @@ class Map():
         end = None
 
         while queue:
-            current = queue.popleft() 
+            current = queue.popleft()
             if current == goal:
                 end = current
                 break

@@ -92,11 +92,11 @@ class PathPlan(Node):
 
         # path = self.occ_map.rrt(s, t)
         path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        if len(path) == 0: 
+        if len(path) == 0 or path is None: 
             self.get_logger().info("No path found!")
             return
 
-        path = self.occ_map.prune_path(path)
+        # path = self.occ_map.prune_path(path)
         
         for p in path:
             self.trajectory.addPoint(p)
