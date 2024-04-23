@@ -511,8 +511,8 @@ class Map():
                 else:
                     p = path[idx]
                 
-                prev1 = s1
-                prev2 = s2
+                # prev1 = s1
+                # prev2 = s2
             except ZeroDivisionError: #one of the slopes are 0 so line is straight
                 path[idx] = 0
             idx+=1

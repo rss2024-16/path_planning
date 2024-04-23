@@ -96,7 +96,7 @@ class PathPlan(Node):
             self.get_logger().info("No path found!")
             return
 
-        path = self.occ_map.prune_path(path)
+        # path = self.occ_map.prune_path(path)
         
         for p in path:
             self.trajectory.addPoint(p)

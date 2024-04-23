@@ -33,10 +33,10 @@ class PurePursuit(Node):
         self.wheelbase_length = 0.3  # FILL IN #
 
         self.MIN_SPEED = 1.6
-        self.MAX_SPEED = 2.5
+        self.MAX_SPEED = 1.6
 
-        self.MAX_LOOKAHEAD = 6.0
-        self.MIN_LOOKAHEAD = 3.0
+        self.MAX_LOOKAHEAD = 4.0 # distance of the closest segment
+        self.MIN_LOOKAHEAD = 0.9
 
         self.trajectory = LineTrajectory("/followed_trajectory")
         # self.get_logger().info('/followed_trajectory')
@@ -48,15 +48,17 @@ class PurePursuit(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
                                                self.drive_topic,
                                                1)
-        
+
         self.pose_sub = self.create_subscription(Odometry, self.odom_topic, self.pose_callback,1)
+
+        self.intersectpub = self.create_publisher(Marker, '/intersect', 1 )
 
         self.pointpub = self.create_publisher(MarkerArray,'/points',1)
 
         self.closestpub = self.create_publisher(Marker,'/closest_point',1)
 
-        self.MAX_TURN = 0.15
-        
+        self.MAX_TURN = 0.2
+
         self.points = None
         self.current_pose = None
         self.relative_points = None
@@ -105,8 +107,9 @@ class PurePursuit(Node):
         x_solutions = np.roots([a, b, c])
 
         # Find corresponding y values using the line equation
+        # publish this for debugging
         intersection_points = [(float(x_val), float(line_slope * x_val + line_intercept)) for x_val in x_solutions]
-        
+
         # +X forward, +Y left, -Y right
 
         if intersection_points[0][0] > 0 and intersection_points[1][0] < 0:
@@ -118,12 +121,13 @@ class PurePursuit(Node):
         else:
             return intersection_points[1]
 
+
     def find_closest_point(self):
         '''
         Finds the closest point that is in front of the car
         '''
         if self.current_pose is not None and self.points is not None:
-            self.get_logger().info(f'curr pose: {self.current_pose}')
+            # self.get_logger().info(f'curr pose: {self.current_pose}')
 
             R = self.transform(self.current_pose[2])
             pose_init = self.current_pose
@@ -132,16 +136,18 @@ class PurePursuit(Node):
             differences = self.points - self.current_pose
 
             relative_points = np.array([np.matmul(i,R) for i in differences])
-            self.get_logger().info(f'{relative_points}')
+            # self.get_logger().info(f'{relative_points}')
             #multiply each difference by transformation matrix to get
             #poses in the robot frame
 
             #check that the point is in front of current pose
-            # xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
-            DIST = 0.25
-            # filtered_points = relative_points[(xdot[0] >= .25)] #filter to only look at points ahead (same direction)
-            filtered_points = [i for i in relative_points if i[0]>=DIST]
+            xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
+            # filtered_points = relative_points[(xdot >= self.MIN_LOOKAHEAD/2)] #filter to only look at points ahead (same direction)
+            filtered_points = relative_points[(xdot >= .25)]
+            # filtered_points = [i for i in relative_points if i[0]>=DIST]
             if len(filtered_points) == 0:
+                if xdot[-1] > 0:
+                    filtered_points = np.array([relative_points[-1]])
                 self.get_logger().info("No points ahead of car")
                 return True
 
@@ -177,15 +183,15 @@ class PurePursuit(Node):
         self.current_pose = np.array([x,y,theta])
 
         closest_point = self.find_closest_point()
-        
+
         if isinstance(closest_point,bool):
             drive_cmd = AckermannDriveStamped()
-            
+
             drive_cmd.drive.speed = 0.0
             drive_cmd.drive.steering_angle = 0.0
 
             self.drive_pub.publish(drive_cmd)
-            
+
 
         elif closest_point is not None:
             relative_x, relative_y = closest_point[:2]
@@ -193,31 +199,35 @@ class PurePursuit(Node):
             slope = relative_y/relative_x
             # self.get_logger().info(f'{slope}')
 
-            self.speed = 6/(10*abs(slope))
-            if self.speed > self.MAX_SPEED:
-                self.speed = self.MAX_SPEED
-            elif self.speed < self.MIN_SPEED:
+            self.speed = self.MAX_SPEED * np.exp(-.95*abs(slope))
+
+            if self.speed < self.MIN_SPEED:
                 self.speed = self.MIN_SPEED
 
             # self.lookahead = np.linalg.norm(np.array([relative_x,relative_y])) / 2
-            self.lookahead = 3/(10*abs(slope))
-            if self.lookahead > self.MAX_LOOKAHEAD:
-                self.lookahead = self.MAX_LOOKAHEAD
-            elif self.lookahead < self.MIN_LOOKAHEAD:
+            # self.lookahead = self.MIN_LOOKAHEAD * np.exp(.6*self.speed)
+            self.lookahead = 10/(8*abs(slope))
+            # self.lookahead = 2*np.linalg.norm(np.array([relative_x,relative_y]))
+            if self.lookahead < self.MIN_LOOKAHEAD:
                 self.lookahead = self.MIN_LOOKAHEAD
+            elif self.lookahead > self.MAX_LOOKAHEAD:
+                self.lookahead = self.MAX_LOOKAHEAD
 
+            #is y intercept right or does it need to be wheelbase length
             intersect = self.circle_intersection(slope,0,self.lookahead)
             turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
-            
+
             if abs(turning_angle) > self.MAX_TURN:
                 turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
 
             drive_cmd = AckermannDriveStamped()
-            
+
             drive_cmd.drive.speed = self.speed
             drive_cmd.drive.steering_angle = turning_angle
 
             self.drive_pub.publish(drive_cmd)
+
+            self.intersect.publish(self.to_marker(intersect))
 
 
     def trajectory_callback(self, msg):
@@ -228,7 +238,7 @@ class PurePursuit(Node):
         markers = []
         count = 0
         for p in self.points:
-            
+
             marker = self.to_marker(p,count)
 
             markers.append(marker)
