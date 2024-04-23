@@ -32,7 +32,7 @@ class LineTrajectory:
     """ A class to wrap and work with piecewise linear trajectories. """
 
     def __init__(self, node, viz_namespace=None):
-        self.points: List[Tuple[float, float]] = []
+        self.points = []
         self.distances = []
         self.has_acceleration = False
         self.visualize = False
@@ -46,8 +46,21 @@ class LineTrajectory:
             self.end_pub = self.node.create_publisher(Marker, viz_namespace + "/end_pose", 1)
 
     # compute the distances along the path for all path segments beyond those already computed
+    def reset_distances(self):
+        self.distances = []
+        num_points = len(self.points)
+
+        for i in range(num_points):
+            if i == 0:
+                self.distances.append(0)
+            else:
+                p0 = self.points[i - 1]
+                p1 = self.points[i]
+                delta = np.array([p0[0] - p1[0], p0[1] - p1[1]])
+                self.distances.append(self.distances[i - 1] + np.linalg.norm(delta))
+                
     def update_distances(self):
-        num_distances = len(self.distances)
+        num_distances = len(self.points)        # I changed this from their code bc idk why these would ever be different
         num_points = len(self.points)
 
         for i in range(num_distances, num_points):
@@ -58,6 +71,18 @@ class LineTrajectory:
                 p1 = self.points[i]
                 delta = np.array([p0[0] - p1[0], p0[1] - p1[1]])
                 self.distances.append(self.distances[i - 1] + np.linalg.norm(delta))
+
+    def interpolate_distance(self, dist):
+
+        # Find where this distance is reached
+        index = len(self.distances)
+        for i, distance in enumerate(self.distances):
+            if distance >= dist:
+                index = i
+                break
+
+        # Cull points after this distance
+        self.points = self.points[:index]
 
     def distance_to_end(self, t):
         if not len(self.points) == len(self.distances):
@@ -85,6 +110,11 @@ class LineTrajectory:
         print("adding point to trajectory:", point)
         self.points.append(point)
         self.update_distances()
+        self.mark_dirty()
+
+    def updatePoints(self, points) -> None:
+        self.points = points[:]
+        self.reset_distances()
         self.mark_dirty()
 
     def clear(self):
@@ -341,16 +371,15 @@ class Map():
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
         # self.grid = dilation(self.grid,square(10))
         # cv2.imwrite('test.png',self.grid)
-        # self.grid = np.load('/root/racecar_ws/src/path_planning/path_planning/grid.npy')
+        self.grid = np.load('/root/racecar_ws/grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
-        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = erosion(self.grid, disk(8))
-        np.save('grid.npy',self.grid)
-        cv2.imwrite('test.png',self.grid)
+        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        # self.grid = erosion(self.grid, disk(8))
+        # np.save('grid.npy',self.grid)
+        # cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
-        self.MAX_DIST = 5
 
     @property
     def height(self) -> int: return self._height
@@ -401,9 +430,6 @@ class Map():
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
-    
-    def blur_grid(self):
-        kernel_size = 5
     
     def astar(self, start: Tuple[float,float], goal: Tuple[float,float]):
         '''
@@ -489,7 +515,7 @@ class Map():
     
     def generate_circle(self,point: Tuple[float,float]):
         u,v = self.xy_to_pixel(point)
-    
+
     def prune_path(self,path):
         '''
         gets rid of unnecessary (low slope) points
@@ -498,18 +524,27 @@ class Map():
         '''
         EPS = 0.01
 
-        slope_yx = lambda p1,p2: abs( (p2[1]-p1[1])/(p2[0]-p1[0]) )
-        slope_xy = lambda p1,p2: abs( (p2[0]-p1[0])/(p2[1]-p1[1]) )
-
         p = path[0]
+
         idx = 1
 
         while idx != len(path)-1:
+            diff = np.array(p) - np.array(path[idx])
+            orientation = np.arctan2(diff[1],diff[0])
+            diff = np.array([diff[0],diff[1],orientation])
+            R = self.R_z(orientation)
+
+            relative = np.matmul(diff,R)
+            slope = relative[0]/relative[1]
+            
             try:
-                if slope_yx(p,path[idx]) < EPS or slope_xy(p,path[idx]) < EPS:
+                if slope < EPS:
                     path[idx] = 0
                 else:
                     p = path[idx]
+                
+                prev1 = s1
+                prev2 = s2
             except ZeroDivisionError: #one of the slopes are 0 so line is straight
                 path[idx] = 0
             idx+=1
@@ -554,8 +589,8 @@ class Map():
             dx = end[0] - begin[0]
             
             length = math.sqrt(dist(begin, end))
-            if length > self.MAX_DIST:
-                end = (begin[0] + dx / length * self.MAX_DIST, begin[1] + dy / length * self.MAX_DIST)
+            if length > MAX_DIST:
+                end = (begin[0] + dx / length * MAX_DIST, begin[1] + dy / length * MAX_DIST)
 
             slope = dy / dx 
 
@@ -625,6 +660,157 @@ class Map():
             return path_to(previous)
         else:
             return None
+
+    def rrt_star(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
+
+        # Constants
+        MAX_DIST = 1
+        GOAL_EPS = 0.5
+        TURNING_RADIUS = 0.5
+        SEARCH_RADIUS = 2
+
+        class Node():
+            def __init__(self, path, loc, parent=None):
+                self.path = path
+                self.loc = loc
+                self.parent = parent
+                self.cost = 0.0 if parent is None else parent.cost
+                self.children = []
+
+        def dist(loc1, loc2):      
+            # Generate the dubins path between the points
+            path = dubins.shortest_path(loc1, loc2, TURNING_RADIUS)
+            configurations, _ = path.sample_many(0.1)
+
+            cum_dist = 0
+            # Accumulate distance along full path
+            for i in range(len(configurations)):
+                if i != 0:
+                    p0 = configurations[i - 1]
+                    p1 = configurations[i]
+                    delta = np.array([p0[0] - p1[0], p0[1] - p1[1]])
+                    cum_dist += np.linalg.norm(delta)
+
+            return cum_dist
+
+        def euclid(loc1, loc2):
+            # Straight line distance between two points
+            return (loc1[0] - loc2[0])**2 + (loc1[1] - loc2[1])**2
+            
+        def find_nearest(new_loc, nodes):
+            return min(nodes, key=lambda node: euclid(node.loc, new_loc))
+
+        def interpolate_path(path, dist_threshold):
+            cum_dist = 0
+            index = len(path)
+                    
+            # Accumulate distance along path until threshold is passed 
+            for i in range(index):
+                if i != 0:
+                    p0 = path[i - 1]
+                    p1 = path[i]
+                    delta = np.array([p0[0] - p1[0], p0[1] - p1[1]])
+                    cum_dist += np.linalg.norm(delta)
+
+                if cum_dist >= dist_threshold:
+                    index = i
+                    break
+            
+            return path[:index]
+
+        def dubins_path(begin, end):
+
+            # Generate the dubins path between the points
+            path = dubins.shortest_path(begin, end, TURNING_RADIUS)
+            configurations, _ = path.sample_many(0.1)
+
+            # Interpolate it to our max distance
+            path = interpolate_path(configurations, MAX_DIST)
+
+            return path, path[-1]
+
+        def collision_free(path):
+
+            # Check every point along the path and return false if 
+            for point in path:
+                u, v = self.xy_to_pixel(point[0], point[1])
+                if not self.is_free(u, v):
+                    return False
+            
+            return True
+
+        def path_to(node):
+            full_path = node.path[::-1]
+
+            if node.parent != None:
+                full_path = full_path + path_to(node.parent)
+
+            ### This is pretty bad, might actually not be needed
+            # Reconstruct the entire path without the theta 
+            real_full_path = []
+            for point in full_path:
+                real_full_path.append((point[0], point[1]))
+ 
+            return real_full_path
+
+        def rewire(nodes, new_node):
+            near_nodes = [node for node in nodes if euclid(node.loc, new_node.loc) < SEARCH_RADIUS]
+
+            for node in near_nodes:
+                if node.loc != new_node.loc:
+                    path, end = dubins_path(node.loc, new_node.loc)
+                    if collision_free(path):
+                        new_cost = node.cost + euclid(node.loc, new_node.loc)
+                        if new_cost < new_node.cost:
+                            try:
+                                new_node.parent.children.remove(new_node)
+                            except:
+                                pass
+                            new_node.parent = node
+                            new_node.cost = new_cost
+                            node.children.append(new_node)
+
+        # Add start to the tree
+        nodes = [Node([start], start)]
+
+        max_samples = 50000
+        # While previous point was not close enough to goal and below max samples
+        for i in range(max_samples):
+
+            # Pick a random grid cell or sample goal with set probability
+            if random.random() > 0.15:
+                while True:
+                    target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
+
+                    if self.is_free(target[0], target[1]):
+                        break
+
+                target = self.pixel_to_xy(target[0], target[1])
+                target = (target[0], target[1], random.uniform(-math.pi, math.pi))
+            else:
+                target = goal
+
+            # Find the nearest node in the list
+            nearest_node = find_nearest(target, nodes)
+
+            # Extend the newest point to the nearest node
+            nearest_path, act_target = dubins_path(nearest_node.loc, target)
+
+            # If the extended path has no collisions
+            if collision_free(nearest_path):
+            
+                # Add the newest node to the list
+                newest_node = Node(nearest_path, act_target, parent=nearest_node)
+                newest_node.cost += euclid(nearest_node.loc, act_target)
+                nodes.append(newest_node)
+
+                # Rewire the tree
+                rewire(nodes, newest_node)
+
+                if euclid(newest_node.loc, goal) <= GOAL_EPS:
+                    return path_to(newest_node)
+
+        return None
 
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point

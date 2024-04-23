@@ -24,7 +24,9 @@ class PurePursuit(Node):
         self.declare_parameter('drive_topic', "default")
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        # self.drive_topic = '/vesc/low_level/ackermann_cmd'
+        self.drive_topic = '/vesc/input/navigation'
 
         self.lookahead = .5  # FILL IN #
         self.speed = 1.0  # FILL IN #
@@ -53,7 +55,7 @@ class PurePursuit(Node):
 
         self.closestpub = self.create_publisher(Marker,'/closest_point',1)
 
-        self.MAX_TURN = 0.34
+        self.MAX_TURN = 0.15
         
         self.points = None
         self.current_pose = None
@@ -124,6 +126,7 @@ class PurePursuit(Node):
         Finds the closest point that is in front of the car
         '''
         if self.current_pose is not None and self.points is not None:
+            self.get_logger().info(f'curr pose: {self.current_pose}')
 
             R = self.transform(self.current_pose[2])
             pose_init = self.current_pose
@@ -176,7 +179,7 @@ class PurePursuit(Node):
 
         theta = orientation[2]
 
-        R = self.transform(theta)
+        # R = self.transform(theta)
 
         self.current_pose = np.array([x,y,theta])
 
