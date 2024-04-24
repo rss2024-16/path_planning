@@ -68,7 +68,7 @@ class PurePursuit(Node):
                                             ])
         
         self.pointpub = self.create_publisher(MarkerArray,'/points',1)
-        # self.relative_point_pub = self.create_publisher(MarkerArray,'/relative',1)
+        self.relative_point_pub = self.create_publisher(MarkerArray,'/relative',1)
         self.circle = self.create_publisher(MarkerArray, '/circle_marker', 1)
         self.intersection = self.create_publisher(Marker,'/intersection',1)
         # self.intersection_1 = self.create_publisher(Marker,'/intersection_1',1)
@@ -98,6 +98,10 @@ class PurePursuit(Node):
                     closest_point = segment_start
                     closest_segment = (segment_start, segment_end)
                     index = i
+
+        # distances = self.find_minimum_distance_array(self.segments, np.array([0,0,0]))
+        # self.get_logger().info(f"array: {distances}")
+        # self.get_logger().info(f"min distance: {min_distance}")
         
         distance_to_goal = self.distance(np.array([0,0,0]), relative_points[-1]) #distance to goal pose
 
@@ -143,7 +147,6 @@ class PurePursuit(Node):
             # self.get_logger().info("extend")
             return False, None
         
-        # intersection_points = [P1 + t1*V, P1 + t2*V]
         # intersection_1 = P1 + t1*V
         # intersection_1 = np.array([intersection_1[0], intersection_1[1], 0])
         # global_intersect_1 = np.matmul(intersection_1, np.linalg.inv(R)) + self.current_pose
@@ -195,7 +198,7 @@ class PurePursuit(Node):
                 if self.lookahead > distance_to_goal:
                     self.lookahead = distance_to_goal
                 # self.get_logger().info("distance: " + str(self.lookahead))
-                # self.publish_circle_marker(self.current_pose, self.lookahead)
+                self.publish_circle_marker(self.current_pose, self.lookahead)
 
                 #finding the circle intersection 
                 success = False
@@ -221,8 +224,8 @@ class PurePursuit(Node):
                     
                     drive_cmd.drive.speed = self.speed
                     drive_cmd.drive.steering_angle = turning_angle
-                    # global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
-                    # self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
+                    global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
+                    self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
 
             self.drive_pub.publish(drive_cmd)
 
@@ -237,10 +240,38 @@ class PurePursuit(Node):
         distance_squared = (v[0] - w[0])**2 + (v[1] - w[1])**2
         if distance_squared == 0.0:
             return self.distance(p, v)
+        # self.get_logger().info(f"distance squared: {distance_squared}")
         t = max(0, min(1, np.dot(p - v, w - v) / distance_squared))
         projection = v + t * (w - v)
         return self.distance(p, projection)
+
+    def find_minimum_distance_array(self, segments, p):
+        """
+        Returns the minimum distance between point p and an array of line segments.
+        Each row of `segments` represents a line segment with columns [v, w].
+        """
+        v = segments[:, 0]  # Extract the v points
+        w = segments[:, 1]  # Extract the w points
         
+        distance_squared = np.sum((v - w)**2, axis=1)
+        zero_indices = np.where(distance_squared == 0.0)
+        non_zero_indices = np.where(distance_squared != 0.0)
+        
+        distances = np.empty(len(segments))
+        
+        # Handle the case where distance_squared == 0.0
+        # self.get_logger().info(f"distance squared two: {distance_squared}")
+        if len(zero_indices[0]) > 0:
+            distances[zero_indices] = np.linalg.norm(p - v[zero_indices], axis=1)
+    
+        # Handle the case where distance_squared != 0.0
+        t = np.clip(np.sum((p - v[non_zero_indices]) * (w[non_zero_indices] - v[non_zero_indices]), axis=1) / distance_squared[non_zero_indices], 0, 1)
+        # print(f"t: {t.shape}")
+        projection = v[non_zero_indices] + t[:, np.newaxis] * (w[non_zero_indices] - v[non_zero_indices])
+        distances[non_zero_indices] = np.linalg.norm(p - projection, axis=1)
+        
+        return distances
+            
 
     def trajectory_callback(self, msg):
         """
@@ -249,9 +280,12 @@ class PurePursuit(Node):
             geometry_msgs/msg/Point position
             geometry_msgs/msg/Quaternion orientation
         """
-        self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
+        # self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
         self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses]) #no theta needed
+        self.segments = np.array([[self.points[i], self.points[i+1]] for i in range(len(self.points) - 1)])
+        #shape (85, 2, 3) 2 is num points, 3 is x,y,theta
+        # self.get_logger().info(f"segments: {self.segments}, shape: {self.segments.shape}")
 
         # markers = []
         # count = 0
