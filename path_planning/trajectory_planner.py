@@ -101,11 +101,11 @@ class PathPlan(Node):
         """
         self.trajectory.clear()
         
-        #s = (self.s.x, self.s.y)
-        #t = (self.t.x, self.t.y)
+        s = (self.s.x, self.s.y)
+        t = (self.t.x, self.t.y)
 
-        s = (self.s.x, self.s.y, self.s_theta)
-        t = (self.t.x, self.t.y, self.t_theta)
+        # s = (self.s.x, self.s.y, self.s_theta)
+        # t = (self.t.x, self.t.y, self.t_theta)
 
         #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
         #path = self.occ_map.rrt_star(s, t)

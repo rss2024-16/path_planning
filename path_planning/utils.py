@@ -372,10 +372,11 @@ class Map():
         self.grid = dilation(self.grid,square(10))
         # cv2.imwrite('test.png',self.grid)
         # self.grid = np.load('/root/racecar_ws/grid.npy')
+        # self.grid = np.load('/root/racecar_ws/grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
-        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        # self.grid = erosion(self.grid, disk(8))
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = erosion(self.grid, disk(8))
         # np.save('grid.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
 
@@ -543,8 +544,8 @@ class Map():
                 else:
                     p = path[idx]
                 
-                prev1 = s1
-                prev2 = s2
+                # prev1 = s1
+                # prev2 = s2
             except ZeroDivisionError: #one of the slopes are 0 so line is straight
                 path[idx] = 0
             idx+=1
