@@ -24,9 +24,9 @@ class PurePursuit(Node):
         self.declare_parameter('drive_topic', "default")
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
         # self.drive_topic = '/vesc/low_level/ackermann_cmd'
-        self.drive_topic = '/vesc/input/navigation'
+        # self.drive_topic = '/vesc/input/navigation'
 
         self.lookahead = .5  # FILL IN #
         self.speed = 1.0  # FILL IN #
@@ -136,7 +136,7 @@ class PurePursuit(Node):
             #get transform matrix between global and robot frame
             # self.get_logger().info(f'curr_pose: {self.current_pose}')
 
-            differences = self.points - self.current_pose
+            differences = self.points - self.current_pose #in global frame
 
             relative_points = np.array([np.matmul(i,R) for i in differences])
             # self.get_logger().info(f'{relative_points}')
@@ -158,7 +158,6 @@ class PurePursuit(Node):
             distances = np.linalg.norm(filtered_points,axis=1)
 
             closest_xy = filtered_points[np.argmin(distances)]
-
 
             closest_xy_global = np.matmul(np.linalg.inv(R),closest_xy)+pose_init
 
