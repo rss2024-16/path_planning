@@ -871,7 +871,7 @@ class Map():
         of a grid square, the point will be assigned to the center with decreasing 
         x and increasing y.
         """
-        x, y, theta = point
+        x, y = point
 
         mid = 0.5
 
