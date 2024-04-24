@@ -12,15 +12,16 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-# from skimage.morphology import dilation, erosion
-# from skimage.morphology import square, disk
+# from skimage.morphology import dilation,erosion
+# from skimage.morphology import square,disk
 
 import dubins
 
 import heapq
 from collections import deque
-import cv2
+# # import cv2
 
+import dubins
 
 EPSILON = 0.00000000001
 
@@ -371,6 +372,7 @@ class Map():
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
         self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+
         # self.grid = dilation(self.grid,square(10))
         #cv2.imwrite('test2.png',self.grid)
         # grid = cv2.imread('test.png', cv2.IMREAD_GRAYSCALE)
@@ -458,6 +460,8 @@ class Map():
         #h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
         h = lambda p0, p1: np.linalg.norm(np.array([p0[0] - p1[0], p0[1] - p1[1]])) # I think this is faster
         #heuristic is just Euclidean distance :(
+        # h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2) * np.arctan2(y[1]-y[0],x[1]-x[0])
+        #arc length
 
         nodelookup = {}
 
@@ -507,7 +511,7 @@ class Map():
         end = None
 
         while queue:
-            current = queue.popleft() 
+            current = queue.popleft()
             if current == goal:
                 end = current
                 break
@@ -559,8 +563,6 @@ class Map():
                 else:
                     p = path[idx]
                 
-                #prev1 = s1
-                #prev2 = s2
             except ZeroDivisionError: #one of the slopes are 0 so line is straight
                 path[idx] = 0
             idx+=1
@@ -853,8 +855,6 @@ class Map():
         #         break
         #     if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
         #         neighbors.append((x + dx, y + dy)) 
-
-
 
 
         # cuts corner on path pruning

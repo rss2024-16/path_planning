@@ -101,25 +101,27 @@ class PathPlan(Node):
         """
         self.trajectory.clear()
         
-        #s = (self.s.x, self.s.y)
-        #t = (self.t.x, self.t.y)
+        s = (self.s.x, self.s.y)
+        t = (self.t.x, self.t.y)
 
-        s = (self.s.x, self.s.y, self.s_theta)
-        t = (self.t.x, self.t.y, self.t_theta)
+        # s = (self.s.x, self.s.y, self.s_theta)
+        # t = (self.t.x, self.t.y, self.t_theta)
 
         #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
         #path = self.occ_map.rrt_star(s, t)
         #path = self.occ_map.rrt(s, t)
 
-        path = self.occ_map.astar(s, t)
+        # path = self.occ_map.astar(s, t)
         #path = self.occ_map.prune_path(path)
         
 
+        # path = self.occ_map.rrt(s, t)
+        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
         if len(path) == 0 or path is None: 
             self.get_logger().info("No path found!")
             return
 
-        path = self.occ_map.prune_path(path)
+        # path = self.occ_map.prune_path(path)
         
         self.trajectory.updatePoints(path)
 
