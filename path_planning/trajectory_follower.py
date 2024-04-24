@@ -349,7 +349,7 @@ class PurePursuit(Node):
         markers = []
         id = 0
         for i in self.intersections:
-            m = self.to_marker(i,rgb=[0.5,0.0,0.5],id=id)
+            m = self.to_marker(i,rgb=[0.0,0.1,0.0],id=id)
             id+=1
             markers.append(m)
 
