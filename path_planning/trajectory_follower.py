@@ -298,7 +298,7 @@ class PurePursuit(Node):
                 if self.lookahead < self.MIN_LOOKAHEAD:
                     self.lookahead = self.MIN_LOOKAHEAD
 
-                intersect = self.circle_intersection(slope,0,self.lookahead)
+            intersect = self.circle_intersection(slope,0,self.lookahead)
 
                 ang_dest = np.linspace(0, 2*np.pi, 20)
                 x_dest = intersect[0] + 0.1 * np.cos(ang_dest)
@@ -311,13 +311,14 @@ class PurePursuit(Node):
                 if abs(turning_angle) > self.MAX_TURN:
                     turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
 
-                drive_cmd = AckermannDriveStamped()
-                
-                drive_cmd.drive.speed = self.speed
-                drive_cmd.drive.steering_angle = turning_angle
+            drive_cmd = AckermannDriveStamped()
+            
+            drive_cmd.drive.speed = self.speed
+            drive_cmd.drive.steering_angle = turning_angle
 
-                self.drive_pub.publish(drive_cmd)
+            self.drive_pub.publish(drive_cmd)
 
+    def get_intersections(self):
     def get_intersections(self):
         '''
         Returns:
@@ -325,6 +326,8 @@ class PurePursuit(Node):
         intersections - list of (x,y) intersections
         lines - list of (slope,y_int) that replicate line
         '''
+        # segments = []
+        path = self.points
         # segments = []
         path = self.points
 
@@ -335,11 +338,14 @@ class PurePursuit(Node):
         intersections = [path[0]]
         # intersect_to_line = {tuple(path[0]): []}
         # lines = []
+        # intersect_to_line = {tuple(path[0]): []}
+        # lines = []
         p = path[0]
 
         eps = 1e-3
 
         last_angle = None
+        # last_p = tuple(path[0])
         # last_p = tuple(path[0])
         while idx < len(path):
             p2 = path[idx]
@@ -367,7 +373,7 @@ class PurePursuit(Node):
         markers = []
         id = 0
         for i in self.intersections:
-            m = self.to_marker(i,rgb=[0.5,0.0,0.5],id=id)
+            m = self.to_marker(i,rgb=[0.0,0.1,0.0],id=id)
             id+=1
             markers.append(m)
 
@@ -388,6 +394,19 @@ class PurePursuit(Node):
     #     pub = MarkerArray()
     #     pub.markers = markers
     #     self.segmentpub.publish(pub)
+    # def plot_segments(self):
+    #     markers = []
+    #     id = 0
+    #     for i in self.intersections:
+    #         s = self.to_marker(i[0],rgb=[0.2,0.6,0.2],id=id)
+    #         id+=1
+    #         # e = self.to_marker(i[-1],rgb=[0.6,0.2,0.2],id=id)
+    #         # id+=1
+    #         markers.append(s)
+    #         # markers.append(e)
+    #     pub = MarkerArray()
+    #     pub.markers = markers
+    #     self.segmentpub.publish(pub)
 
 
     def trajectory_callback(self, msg):
@@ -395,6 +414,7 @@ class PurePursuit(Node):
 
         self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses])
 
+        self.get_intersections()
         self.get_intersections()
         self.plot_intersections()
 

@@ -17,8 +17,9 @@ from tf_transformations import euler_from_quaternion
 
 import heapq
 from collections import deque
-# import cv2
+# # import cv2
 
+import dubins
 
 EPSILON = 0.00000000001
 
@@ -368,10 +369,11 @@ class Map():
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
-        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        # self.grid = dilation(self.grid,square(10))
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = dilation(self.grid,square(10))
         # cv2.imwrite('test.png',self.grid)
-        self.grid = np.load('/root/racecar_ws/grid.npy')
+        # self.grid = np.load('/root/racecar_ws/grid.npy')
+        # self.grid = np.load('/root/racecar_ws/grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
@@ -440,7 +442,6 @@ class Map():
         goal = self.discretize_point(goal)
 
         h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
-        h = lambda x,y: dubins
         #heuristic is just Euclidean distance
         # h = lambda x,y: abs( (x[1]-x[0]) + (y[1]-y[0]) )
         # h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2) * np.arctan2(y[1]-y[0],x[1]-x[0])
@@ -844,8 +845,6 @@ class Map():
         #         break
         #     if (0 <= u and u < self._width) and (0 <= v and v < self._height) and self.is_free(u,v):
         #         neighbors.append((x + dx, y + dy)) 
-
-
 
 
         # cuts corner on path pruning

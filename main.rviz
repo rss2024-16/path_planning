@@ -4,7 +4,6 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /RobotModel1
         - /Marker2/Status1
         - /Marker4
       Splitter Ratio: 0.5
@@ -190,6 +189,7 @@ Visualization Manager:
         {}
       Topic:
         Depth: 5
+        Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -199,7 +199,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        /followed_trajectory/trajectory: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
