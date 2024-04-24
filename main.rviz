@@ -4,10 +4,8 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /RobotModel1
         - /Marker2/Status1
-        - /Marker4/Topic1
-        - /Marker4/Namespaces1
+        - /MarkerArray1
       Splitter Ratio: 0.5
     Tree Height: 272
   - Class: rviz_common/Selection
@@ -184,29 +182,29 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /pf/pose/odom
       Value: true
-    - Class: rviz_default_plugins/Marker
-      Enabled: false
-      Name: Marker
-      Namespaces:
-        {}
-      Topic:
-        Depth: 6
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /closest_point
-      Value: false
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        /followed_trajectory/trajectory: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /points
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /circle_marker
       Value: true
   Enabled: true
   Global Options:
@@ -258,12 +256,13 @@ Visualization Manager:
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -18.13859748840332
-        Y: 28.594104766845703
-        Z: 0.003856658935546875
         X: -13.638050079345703
         Y: 8.404083251953125
         Z: 0.00577545166015625
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
       Near Clip Distance: 0.009999999776482582
       Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>

@@ -38,7 +38,7 @@ class PurePursuit(Node):
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
 
-        self.lookahead = .5  # FILL IN #
+        self.lookahead = 1.0  # FILL IN #
         self.speed = 1.0  # FILL IN #
         self.wheelbase_length = 0.3  # FILL IN #
 
@@ -76,6 +76,28 @@ class PurePursuit(Node):
         
         self.points = None
         self.current_pose = None
+        self.intersections = None
+
+    def closest_intersect(self, relative_points, xdot):
+        '''
+        Finds the closest point that is in front of the car
+        '''
+        if self.current_pose is not None and self.intersections is not None:
+
+            filtered_points = relative_points[(xdot > 0)] #filter to only look at points ahead (same direction)
+
+            if len(filtered_points) == 0:
+                if xdot[-1] >= 0:
+                    filtered_points = np.array([relative_points[-1]])
+                else:
+                    self.get_logger().info("No points ahead of car")
+                    return None
+
+            distances = np.linalg.norm(filtered_points,axis=1)
+            idx = np.argmin(distances)
+            closest_point = filtered_points[idx]
+            closest_point_distance = distances[idx]
+            return closest_point, closest_point_distance
 
     def find_closest_point_on_trajectory(self, relative_points):
         """
@@ -101,13 +123,19 @@ class PurePursuit(Node):
         
         distance_to_goal = self.distance(np.array([0,0,0]), relative_points[-1]) #distance to goal pose
 
+        closest_intersect = self.closest_intersect(relative_points, xdot)
+        if closest_intersect is not None:
+            closest_intersect_distance = closest_intersect[1]
+        else:
+            closest_intersect_distance = None
+
         if closest_point is None:
             # self.get_logger().info("no points in front of car")
-            return True, None, None   
+            return True, None, None, None   
         if distance_to_goal < 0.001: 
             # self.get_logger().info("close enough to goal")
-            return True, None, None
-        return closest_point, index, distance_to_goal 
+            return True, None, None, None
+        return closest_point, index, distance_to_goal, closest_intersect_distance
     
 
     def find_circle_intersection(self, center, radius, p1, p2, R):
@@ -177,10 +205,11 @@ class PurePursuit(Node):
         R = self.transform(theta)
         self.current_pose = np.array([x,y,theta])  #car's coordinates in global frame
 
-        if self.points is not None:
-            differences = self.points - self.current_pose
+        if self.intersections is not None:
+            differences = self.intersections - self.current_pose
             relative_points = np.array([np.matmul(i,R) for i in differences])
-            closest_point, index, distance_to_goal = self.find_closest_point_on_trajectory(relative_points)
+            closest_point, index, distance_to_goal, intersect_distance = \
+                self.find_closest_point_on_trajectory(relative_points)
             # self.get_logger().info("index: " + str(index))
             # self.get_logger().info("distance to goal: " + str(distance_to_goal))
 
@@ -190,30 +219,40 @@ class PurePursuit(Node):
                 drive_cmd.drive.speed = 0.0
                 drive_cmd.drive.steering_angle = 0.0
             else:
-                self.speed = 4.0
-                self.lookahead = 3.0
+                slope = closest_point[1]/closest_point[0]
+                self.speed = 4.0 * np.exp(-abs(slope))
+                if self.speed < self.MAX_SPEED:
+                    self.speed = self.MAX_LOOKAHEAD
+                self.lookahead = intersect_distance if intersect_distance < 1.5 else self.speed
                 if self.lookahead > distance_to_goal:
                     self.lookahead = distance_to_goal
-                # self.get_logger().info("distance: " + str(self.lookahead))
-                # self.publish_circle_marker(self.current_pose, self.lookahead)
-
                 #finding the circle intersection 
                 success = False
                 i = index
-                while not success and i < len(relative_points) - 1:
-                    segment_start = relative_points[i]
-                    segment_end = relative_points[i + 1]
-                    segment = (segment_start, segment_end)
-                    success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
-                    i += 1
-                    # self.publish_marker_array(self.relative_point_pub, segment, R, self.current_pose)
+                if i == len(relative_points) - 1:
+                    intersect = relative_points[-1]
+                else:
+                    while not success and i < len(relative_points) - 1:
+                        segment_start = relative_points[i]
+                        segment_end = relative_points[i + 1]
+                        segment = (segment_start, segment_end)
+                        success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
+                        if not success and i > 0:
+                            segment_start = relative_points[i - 1]
+                            segment_end = relative_points[i]
+                            success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
+                        #so this only works if both parts of the intersections are in FOV
+                        i += 1
+                        # self.publish_marker_array(self.relative_point_pub, segment, R, self.current_pose)
 
                 if not success:
                     pass
                     # self.get_logger().info("No intersection found")
                 else:
                     #pure pursuit formula
-                    intersect = np.array([intersect[0], intersect[1], 0])
+
+                # self.get_logger().info("distance: " + str(self.lookahead))
+                    self.publish_circle_marker(self.current_pose, self.lookahead)
                     turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
                 
                     if abs(turning_angle) > self.MAX_TURN:
@@ -221,9 +260,11 @@ class PurePursuit(Node):
                     
                     drive_cmd.drive.speed = self.speed
                     drive_cmd.drive.steering_angle = turning_angle
-                    # global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
-                    # self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
-
+                    try:
+                        global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
+                        self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
+                    except:
+                        pass
             self.drive_pub.publish(drive_cmd)
 
         
@@ -251,7 +292,8 @@ class PurePursuit(Node):
         """
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
-        self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses]) #no theta needed
+        self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses]) #no theta 
+        self.get_intersections()
 
         # markers = []
         # count = 0
@@ -272,6 +314,41 @@ class PurePursuit(Node):
         self.trajectory.publish_viz(duration=0.0)
 
         self.initialized_traj = True
+
+    def get_intersections(self):
+        '''
+        Returns:
+        intersect_to_line - dict mapping intersect to the lines it intersects with
+        intersections - list of (x,y) intersections
+        lines - list of (slope,y_int) that replicate line
+        '''
+        path = self.points
+
+        orientation = lambda p1,p2: np.arctan2( (p2[1]-p1[1]),(p2[0]-p1[0]) )
+
+        idx = 1
+        intersections = [path[0]]
+
+        p = path[0]
+
+        eps = 1e-3
+
+        last_angle = None
+
+        while idx < len(path):
+            p2 = path[idx]
+            angle = orientation(p2,p)
+            if last_angle is None or abs(angle-last_angle) < eps:
+                pass
+            else:
+                intersections.append(p)
+            last_angle = angle
+            p = path[idx]
+            idx+=1
+
+        intersections.append(path[-1])
+        self.intersections = intersections
+        self.get_logger().info(f'{self.intersections}')
 
     def to_marker(self,position,id = 1,rgb=[1.0,0.0,0.0],scale=0.25):
         marker = Marker()
