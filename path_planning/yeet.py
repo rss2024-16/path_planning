@@ -229,8 +229,8 @@ class PurePursuit(Node):
                 #finding the circle intersection 
                 success = False
                 i = index
-                if i == len(relative_points) - 1:
-                    intersect = relative_points[-1]
+                if i == len(relative_points) - 2:
+                    success,intersect = (True,relative_points[-1])
                 else:
                     while not success and i < len(relative_points) - 1:
                         segment_start = relative_points[i]
@@ -241,6 +241,7 @@ class PurePursuit(Node):
                             segment_start = relative_points[i - 1]
                             segment_end = relative_points[i]
                             success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
+                    
                         #so this only works if both parts of the intersections are in FOV
                         i += 1
                         # self.publish_marker_array(self.relative_point_pub, segment, R, self.current_pose)
@@ -261,6 +262,7 @@ class PurePursuit(Node):
                     drive_cmd.drive.speed = self.speed
                     drive_cmd.drive.steering_angle = turning_angle
                     try:
+                        intersect = np.array([intersect[0],intersect[1],0])
                         global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
                         self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
                     except:
