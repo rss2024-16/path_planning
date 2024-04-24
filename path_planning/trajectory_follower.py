@@ -56,7 +56,7 @@ class PurePursuit(Node):
         self.intersectpub = self.create_publisher(Marker, '/intersect', 1 )
 
         self.pointpub = self.create_publisher(MarkerArray,'/points',1)
-        self.segmentpub = self.create_publisher(MarkerArray,'/segments',1)
+        self.segmentpub = self.create_publisher(MarkerArray,'/intersections',1)
 
         self.closestpub = self.create_publisher(Marker,'/closest_point',1)
 
@@ -301,28 +301,29 @@ class PurePursuit(Node):
 
                 self.drive_pub.publish(drive_cmd)
 
-    def get_segments(self,path):
+    def get_intersections(self):
         '''
         Returns:
         intersect_to_line - dict mapping intersect to the lines it intersects with
         intersections - list of (x,y) intersections
         lines - list of (slope,y_int) that replicate line
         '''
-        segments = []
+        # segments = []
+        path = self.points
 
         orientation = lambda p1,p2: np.arctan2( (p2[1]-p1[1]),(p2[0]-p1[0]) )
 
         idx = 1
         # segment = [path[0]]
         intersections = [path[0]]
-        intersect_to_line = {tuple(path[0]): []}
-        lines = []
+        # intersect_to_line = {tuple(path[0]): []}
+        # lines = []
         p = path[0]
 
         eps = 1e-3
 
         last_angle = None
-        last_p = tuple(path[0])
+        # last_p = tuple(path[0])
         while idx < len(path):
             p2 = path[idx]
             angle = orientation(p2,p)
@@ -357,27 +358,27 @@ class PurePursuit(Node):
         pub.markers = markers
         self.segmentpub.publish(pub)
     
-    def plot_segments(self):
-        markers = []
-        id = 0
-        for i in self.intersections:
-            s = self.to_marker(i[0],rgb=[0.2,0.6,0.2],id=id)
-            id+=1
-            # e = self.to_marker(i[-1],rgb=[0.6,0.2,0.2],id=id)
-            # id+=1
-            markers.append(s)
-            # markers.append(e)
-        pub = MarkerArray()
-        pub.markers = markers
-        self.segmentpub.publish(pub)
+    # def plot_segments(self):
+    #     markers = []
+    #     id = 0
+    #     for i in self.intersections:
+    #         s = self.to_marker(i[0],rgb=[0.2,0.6,0.2],id=id)
+    #         id+=1
+    #         # e = self.to_marker(i[-1],rgb=[0.6,0.2,0.2],id=id)
+    #         # id+=1
+    #         markers.append(s)
+    #         # markers.append(e)
+    #     pub = MarkerArray()
+    #     pub.markers = markers
+    #     self.segmentpub.publish(pub)
 
 
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
         self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses])
-        self.segments = self.get_segments(self.points)
 
+        self.get_intersections()
         self.plot_intersections()
 
         markers = []

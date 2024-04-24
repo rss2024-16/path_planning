@@ -17,7 +17,7 @@ from skimage.morphology import square,disk
 
 import heapq
 from collections import deque
-import cv2
+# import cv2
 
 
 EPSILON = 0.00000000001
