@@ -56,7 +56,7 @@ class PurePursuit(Node):
         self.intersectpub = self.create_publisher(Marker, '/intersect', 1 )
 
         self.pointpub = self.create_publisher(MarkerArray,'/points',1)
-        self.segmentpub = self.create_publisher(MarkerArray,'/segments',1)
+        self.segmentpub = self.create_publisher(MarkerArray,'/intersections',1)
 
         self.closestpub = self.create_publisher(Marker,'/closest_point',1)
 
@@ -222,107 +222,70 @@ class PurePursuit(Node):
             relative_x, relative_y = closest_point[:2]
             slope = relative_y/relative_x
             EPS = 0.05
-            if abs(slope) < EPS:
-                pure_pursuit = True
-            else:
-                pure_pursuit = False
+            # slope,y = self.intersect_to_line[tuple(closest_point)][0]
 
-            if not pure_pursuit:
-                
-                kp = 1.0
-                kd = 1.0/6.0
-                ki = 1.0/8.0
-                P = kp*np.arctan2(relative_y,relative_x)
-                if len(self.controls) > 5:
-                    if len(self.controls) < 10:
-                        sample = self.controls
-                    else:
-                        sample = self.controls[-10:]
+            self.slopes.append(slope)
+            # self.get_logger().info(f'{slope}')
 
-                    I = -ki*np.trapz(sample)
-                    slope, _ = np.polyfit(np.arange(len(sample)),sample,1)
-                    D = -kd*slope
-                    control = P+I+D
-                else:
-                    control = P
-                
-                self.get_logger().info(f'{control}')
-                self.controls.append(control)
-                if abs(control) > self.MAX_TURN:
-                    control = self.MAX_TURN if control > 0 else -self.MAX_TURN
+            # self.speed = 3/(10*abs(slope))
+            self.speed = 4*np.exp(-.9*abs(slope))
+            # self.speed = 2.0
+            if self.speed > self.MAX_SPEED:
+                self.speed = self.MAX_SPEED
+            elif self.speed < self.MIN_SPEED:
+                self.speed = self.MIN_SPEED
 
-                drive_cmd = AckermannDriveStamped()
-                drive_cmd.drive.speed = 1.6
+            # self.lookahead = np.linalg.norm(np.array([relative_x,relative_y]))
+            # self.lookahead = 1.0
+            # self.lookahead = 3/(10*abs(slope))
+            self.lookahead = 1.5*self.speed
+            # if self.lookahead > self.MAX_LOOKAHEAD:
+            #     self.lookahead = self.MAX_LOOKAHEAD
+            # elif self.lookahead < self.MIN_LOOKAHEAD:
+            #     self.lookahead = self.MIN_LOOKAHEAD
 
-                drive_cmd.drive.steering_angle = control
+            intersect = self.circle_intersection(slope,0,self.lookahead)
 
-                self.drive_pub.publish(drive_cmd)
-                
+            ang_dest = np.linspace(0, 2*np.pi, 20)
+            x_dest = intersect[0] + 0.1 * np.cos(ang_dest)
+            y_dest = intersect[1] + 0.1 * np.sin(ang_dest)
+            turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
+            # self.get_logger().info('hi1')
+            VisualizationTools.plot_line(x_dest, y_dest, self.path_pub, frame='/base_link', color=(0., 1., 0.))
+            # self.get_logger().info('hi2')
+            if abs(turning_angle) > self.MAX_TURN:
+                turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
 
-            elif pure_pursuit:
-                # slope,y = self.intersect_to_line[tuple(closest_point)][0]
+            drive_cmd = AckermannDriveStamped()
+            
+            drive_cmd.drive.speed = self.speed
+            drive_cmd.drive.steering_angle = turning_angle
 
-                self.slopes.append(slope)
-                # self.get_logger().info(f'{slope}')
+            self.drive_pub.publish(drive_cmd)
 
-                # self.speed = 3/(10*abs(slope))
-                self.speed = 4*np.exp(-.9*abs(slope))
-                # self.speed = 2.0
-                if self.speed > self.MAX_SPEED:
-                    self.speed = self.MAX_SPEED
-                elif self.speed < self.MIN_SPEED:
-                    self.speed = self.MIN_SPEED
-
-                # self.lookahead = np.linalg.norm(np.array([relative_x,relative_y]))
-                # self.lookahead = 1.0
-                # self.lookahead = 3/(10*abs(slope))
-                self.lookahead = 1.5*self.speed
-                # if self.lookahead > self.MAX_LOOKAHEAD:
-                #     self.lookahead = self.MAX_LOOKAHEAD
-                # elif self.lookahead < self.MIN_LOOKAHEAD:
-                #     self.lookahead = self.MIN_LOOKAHEAD
-
-                intersect = self.circle_intersection(slope,0,self.lookahead)
-
-                ang_dest = np.linspace(0, 2*np.pi, 20)
-                x_dest = intersect[0] + 0.1 * np.cos(ang_dest)
-                y_dest = intersect[1] + 0.1 * np.sin(ang_dest)
-                turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
-                # self.get_logger().info('hi1')
-                VisualizationTools.plot_line(x_dest, y_dest, self.path_pub, frame='/base_link', color=(0., 1., 0.))
-                # self.get_logger().info('hi2')
-                if abs(turning_angle) > self.MAX_TURN:
-                    turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
-
-                drive_cmd = AckermannDriveStamped()
-                
-                drive_cmd.drive.speed = self.speed
-                drive_cmd.drive.steering_angle = turning_angle
-
-                self.drive_pub.publish(drive_cmd)
-
-    def get_segments(self,path):
+    def get_intersections(self):
         '''
         Returns:
         intersect_to_line - dict mapping intersect to the lines it intersects with
         intersections - list of (x,y) intersections
         lines - list of (slope,y_int) that replicate line
         '''
-        segments = []
+        # segments = []
+        path = self.points
 
         orientation = lambda p1,p2: np.arctan2( (p2[1]-p1[1]),(p2[0]-p1[0]) )
 
         idx = 1
         # segment = [path[0]]
         intersections = [path[0]]
-        intersect_to_line = {tuple(path[0]): []}
-        lines = []
+        # intersect_to_line = {tuple(path[0]): []}
+        # lines = []
         p = path[0]
 
         eps = 1e-3
 
         last_angle = None
-        last_p = tuple(path[0])
+        # last_p = tuple(path[0])
         while idx < len(path):
             p2 = path[idx]
             angle = orientation(p2,p)
@@ -357,27 +320,27 @@ class PurePursuit(Node):
         pub.markers = markers
         self.segmentpub.publish(pub)
     
-    def plot_segments(self):
-        markers = []
-        id = 0
-        for i in self.intersections:
-            s = self.to_marker(i[0],rgb=[0.2,0.6,0.2],id=id)
-            id+=1
-            # e = self.to_marker(i[-1],rgb=[0.6,0.2,0.2],id=id)
-            # id+=1
-            markers.append(s)
-            # markers.append(e)
-        pub = MarkerArray()
-        pub.markers = markers
-        self.segmentpub.publish(pub)
+    # def plot_segments(self):
+    #     markers = []
+    #     id = 0
+    #     for i in self.intersections:
+    #         s = self.to_marker(i[0],rgb=[0.2,0.6,0.2],id=id)
+    #         id+=1
+    #         # e = self.to_marker(i[-1],rgb=[0.6,0.2,0.2],id=id)
+    #         # id+=1
+    #         markers.append(s)
+    #         # markers.append(e)
+    #     pub = MarkerArray()
+    #     pub.markers = markers
+    #     self.segmentpub.publish(pub)
 
 
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
         self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses])
-        self.segments = self.get_segments(self.points)
 
+        self.get_intersections()
         self.plot_intersections()
 
         markers = []
