@@ -1,0 +1,15 @@
+<launch>
+    <node pkg="path_planning" exec="trajectory_planner" name="trajectory_planner" output="screen">
+        <param from="$(find-pkg-share path_planning)/config/real/config.yaml"/>
+    </node>
+    <node pkg="path_planning" exec="yeet" name="yeet">
+        <param from="$(find-pkg-share path_planning)/config/sim/yeet.yaml"/>
+    </node>
+    <node pkg="localization" exec="particle_filter" name="particle_filter" output="screen">
+        <param from="$(find-pkg-share localization)/real_params.yaml"/>
+    </node>
+    <node pkg="wall_follower" exec="safety_controller" name="safety_controller" output="screen">
+        <param from="$(find-pkg-share wall_follower)/robotparams.yaml"/>
+    </node>
+    <!-- need to also launch the safety controller as stated in readme probably -->
+</launch>

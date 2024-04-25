@@ -5,7 +5,7 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Marker2/Status1
-        - /Marker4
+        - /MarkerArray2
       Splitter Ratio: 0.5
     Tree Height: 272
   - Class: rviz_common/Selection
@@ -189,7 +189,6 @@ Visualization Manager:
         {}
       Topic:
         Depth: 5
-        Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -205,19 +204,31 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /intersections
+        Value: /circle_marker
       Value: true
     - Class: rviz_default_plugins/Marker
       Enabled: true
       Name: Marker
       Namespaces:
-        "": true
+        /followed_trajectory/trajectory: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /intersect
+        Value: /intersection
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /circle_marker
       Value: true
   Enabled: true
   Global Options:
@@ -262,7 +273,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 24.220245361328125
+      Distance: 25.528364181518555
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
