@@ -300,16 +300,16 @@ class PurePursuit(Node):
 
             intersect = self.circle_intersection(slope,0,self.lookahead)
 
-                ang_dest = np.linspace(0, 2*np.pi, 20)
-                x_dest = intersect[0] + 0.1 * np.cos(ang_dest)
-                y_dest = intersect[1] + 0.1 * np.sin(ang_dest)
-                turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
-                turning_angle += OFFSET
-                # self.get_logger().info('hi1')
-                VisualizationTools.plot_line(x_dest, y_dest, self.path_pub, frame='/base_link', color=(0., 1., 0.))
-                # self.get_logger().info('hi2')
-                if abs(turning_angle) > self.MAX_TURN:
-                    turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
+            ang_dest = np.linspace(0, 2*np.pi, 20)
+            x_dest = intersect[0] + 0.1 * np.cos(ang_dest)
+            y_dest = intersect[1] + 0.1 * np.sin(ang_dest)
+            turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
+            turning_angle += OFFSET
+            # self.get_logger().info('hi1')
+            VisualizationTools.plot_line(x_dest, y_dest, self.path_pub, frame='/base_link', color=(0., 1., 0.))
+            # self.get_logger().info('hi2')
+            if abs(turning_angle) > self.MAX_TURN:
+                turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
 
             drive_cmd = AckermannDriveStamped()
             
@@ -318,7 +318,6 @@ class PurePursuit(Node):
 
             self.drive_pub.publish(drive_cmd)
 
-    def get_intersections(self):
     def get_intersections(self):
         '''
         Returns:
