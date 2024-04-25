@@ -706,14 +706,6 @@ class Map():
         def euclid(p0, p1):
             return np.linalg.norm(np.array([p0[0] - p1[0], p0[1] - p1[1]]))
 
-        def path_length(p0, p1):
-            # Generate the dubins path between the points
-            path = dubins.shortest_path(loc1, loc2, TURN_RADIUS)
-            configurations, _ = path.sample_many(SAMPLE_SIZE)
-
-            # Estimated path length
-            return len(configurations) * SAMPLE_SIZE
-
         def steer(begin, end):
 
             # Generate the dubins path between the points
