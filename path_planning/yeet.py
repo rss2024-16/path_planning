@@ -71,6 +71,8 @@ class PurePursuit(Node):
         self.relative_point_pub = self.create_publisher(MarkerArray,'/relative',1)
         self.circle = self.create_publisher(MarkerArray, '/circle_marker', 1)
         self.intersection = self.create_publisher(Marker,'/intersection',1)
+        self.closest = self.create_publisher(Marker,'/closest',1)
+
         # self.intersection_1 = self.create_publisher(Marker,'/intersection_1',1)
         # self.intersection_2 = self.create_publisher(Marker, '/intersection_2' ,1)
         
@@ -99,7 +101,7 @@ class PurePursuit(Node):
             closest_point_distance = distances[idx]
             return closest_point, closest_point_distance
 
-    def find_closest_point_on_trajectory(self, relative_points):
+    def find_closest_point_on_trajectory(self, relative_points, R):
         """
         Find the point on the trajectory nearest to the car's position.
         relative points: the points on trajectory, converted into the car's frame of reference
@@ -128,6 +130,10 @@ class PurePursuit(Node):
         distance_to_goal = self.distance(np.array([0,0,0]), relative_points[-1]) #distance to goal pose
 
         closest_intersect = self.closest_intersect(relative_points, xdot)
+        closest_point = closest_intersect[0]
+        closest_global = np.matmul(closest_point, np.linalg.inv(R)) + self.current_pose
+        self.closest.publish(self.to_marker(closest_global, 0, [0.0, 1.0, 0.0], 0.5))
+
         if closest_intersect is not None:
             closest_intersect_distance = closest_intersect[1]
         else:
@@ -212,7 +218,7 @@ class PurePursuit(Node):
             differences = self.intersections - self.current_pose
             relative_points = np.array([np.matmul(i,R) for i in differences])
             closest_point, index, distance_to_goal, intersect_distance = \
-                self.find_closest_point_on_trajectory(relative_points)
+                self.find_closest_point_on_trajectory(relative_points, R)
             # self.get_logger().info("index: " + str(index))
             # self.get_logger().info("distance to goal: " + str(distance_to_goal))
 
