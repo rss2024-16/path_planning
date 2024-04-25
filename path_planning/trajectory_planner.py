@@ -6,6 +6,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory, Map
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
+from visualization_msgs.msg import Marker, MarkerArray
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -47,6 +48,8 @@ class PathPlan(Node):
             self.pose_cb,
             10
         )
+
+        self.tree_pub = self.create_publisher(MarkerArray, '/tree', 10)           ## REMOVE THIS
 
         #Line Trajectory class in utils.py
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
@@ -104,11 +107,11 @@ class PathPlan(Node):
         s = (self.s.x, self.s.y)
         t = (self.t.x, self.t.y)
 
-        # s = (self.s.x, self.s.y, self.s_theta)
-        # t = (self.t.x, self.t.y, self.t_theta)
+        s = (self.s.x, self.s.y, self.s_theta)
+        t = (self.t.x, self.t.y, self.t_theta)
 
         #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        #path = self.occ_map.rrt_star(s, t)
+        paths, path = self.occ_map.rrt_star(s, t)
         #path = self.occ_map.rrt(s, t)
 
         # path = self.occ_map.astar(s, t)
@@ -116,17 +119,71 @@ class PathPlan(Node):
         
 
         # path = self.occ_map.rrt(s, t)
-        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        if len(path) == 0 or path is None: 
-            self.get_logger().info("No path found!")
-            return
+        #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        # if len(path) == 0 or path is None: 
+        #     self.get_logger().info("No path found!")
+        #     return
 
         # path = self.occ_map.prune_path(path)
+
+        self.get_logger().info("returned")
+
+        x = []
+        y = []
+        # for path in paths:
+        for point in paths:
+            x.append(point[0])
+            y.append(point[1])
+
+        self.get_logger().info("points generated")
+
+        self.publish_marker_array(self.tree_pub, x, y)
+        
         
         self.trajectory.updatePoints(path)
 
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
+
+    def publish_marker_array(self, publisher, xa, ya, rgb=[1.0,0.0,0.0]):
+        """
+        converts the point array from car to global frame and publishes the markerarray
+        """
+        markers = []
+        count = 0
+        for x, y in zip(xa, ya):
+            marker = self.to_marker((x, y), count, rgb=rgb)
+            markers.append(marker)
+            count+=1
+
+        markerarray = MarkerArray()
+        markerarray.markers = markers
+        publisher.publish(markerarray)
+
+    def to_marker(self,position,id = 1,rgb=[1.0,0.0,0.0],scale=0.25):
+        marker = Marker()
+        marker.header.frame_id = "/map"  # Set the frame id
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "/followed_trajectory/trajectory"
+        marker.id = id
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = position[0]
+        marker.pose.position.y = position[1]
+        marker.pose.position.z = 0.0
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = scale
+        marker.scale.y = scale
+        marker.scale.z = scale
+        marker.color.a = 1.0
+        marker.color.r = rgb[0]
+        marker.color.g = rgb[1]
+        marker.color.b = rgb[2]
+
+        return marker
 
 
 def main(args=None):

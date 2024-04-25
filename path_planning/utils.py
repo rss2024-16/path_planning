@@ -371,13 +371,13 @@ class Map():
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
-        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
 
         # self.grid = dilation(self.grid,square(10))
         #cv2.imwrite('test2.png',self.grid)
         # grid = cv2.imread('test.png', cv2.IMREAD_GRAYSCALE)
         # cv2.imwrite('test3.png', grid)
-        # self.grid = np.load('grid.npy')
+        self.grid = np.load('grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
@@ -477,7 +477,7 @@ class Map():
             nodes += 1
 
             if node.pose == goal:
-                return node.extract_path(), nodes
+                return node.extract_path()
             
             for n in self.get_neighbors(node.pose):
                 try:
@@ -531,7 +531,7 @@ class Map():
             i = parent[i]
             path.append(i)
         
-        return path[::-1], len(visited) #path start -> goal in tuples of x,y point nodes
+        return path[::-1] #path start -> goal in tuples of x,y point nodes
     
     def generate_circle(self,point: Tuple[float,float]):
         u,v = self.xy_to_pixel(point)
@@ -680,7 +680,7 @@ class Map():
             samples += 1
 
         if samples < max_samples:
-            return path_to(previous), nodes
+            return path_to(previous)
         else:
             return None
 
@@ -690,11 +690,11 @@ class Map():
         MAX_DIST = 1.5
         SEARCH_CONST = 6
         SAMPLE_SIZE = 0.25
-        MAX_SAMPLES = 10000
+        MAX_SAMPLES = 7000
 
         # Constants
-        GOAL_THRESH = 0.5
-        TURN_RADIUS = 1
+        GOAL_THRESH = 1
+        TURN_RADIUS = 2
 
         class Node():
             def __init__(self, path, loc, parent=None):
@@ -703,16 +703,10 @@ class Map():
                 self.parent = parent
                 self.cost = 0.0 if parent is None else parent.cost
 
+                self.head = True                                        ### REMOVE THIS
+
         def euclid(p0, p1):
             return np.linalg.norm(np.array([p0[0] - p1[0], p0[1] - p1[1]]))
-
-        def path_length(p0, p1):
-            # Generate the dubins path between the points
-            path = dubins.shortest_path(loc1, loc2, TURN_RADIUS)
-            configurations, _ = path.sample_many(SAMPLE_SIZE)
-
-            # Estimated path length
-            return len(configurations) * SAMPLE_SIZE
 
         def steer(begin, end):
 
@@ -814,15 +808,31 @@ class Map():
                 newest_node = Node(nearest_path, target, parent=nearest_node)
                 newest_node.cost += len(nearest_path) * SAMPLE_SIZE
                 nodes.append(newest_node)
+                nearest_node.head = False                                       ### REMOVE THIS
+                newest_node.head = True 
 
                 # Rewire the tree as necessary
-                rewire(nodes, newest_node)
+                #rewire(nodes, newest_node)
 
                 # If close enough to the goal, return
-                if euclid(newest_node.loc, goal) <= GOAL_THRESH:
-                    return path_to(newest_node), samples
+                if euclid(newest_node.loc, goal) <= GOAL_THRESH:        
+                    heads = [node for node in nodes if node.head]
 
-        return None
+                    paths = []
+                    for n in heads:
+                        paths.append(n.loc)
+
+                    return paths, path_to(newest_node)
+                    #return path_to(newest_node)                                ### UNCOMMENT THIS
+
+        heads = [node for node in nodes if node.head]
+
+        paths = []
+        for n in heads:
+            paths.append(n.loc)
+
+        return paths, None
+        #return None
 
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point

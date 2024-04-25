@@ -298,7 +298,7 @@ class PurePursuit(Node):
                 if self.lookahead < self.MIN_LOOKAHEAD:
                     self.lookahead = self.MIN_LOOKAHEAD
 
-            intersect = self.circle_intersection(slope,0,self.lookahead)
+                intersect = self.circle_intersection(slope,0,self.lookahead)
 
                 ang_dest = np.linspace(0, 2*np.pi, 20)
                 x_dest = intersect[0] + 0.1 * np.cos(ang_dest)
@@ -318,7 +318,6 @@ class PurePursuit(Node):
 
             self.drive_pub.publish(drive_cmd)
 
-    def get_intersections(self):
     def get_intersections(self):
         '''
         Returns:
