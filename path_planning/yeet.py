@@ -35,10 +35,10 @@ class PurePursuit(Node):
         self.declare_parameter('odom_topic', "default")
         self.declare_parameter('drive_topic', "default")
 
-        # self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.odom_topic = '/pf/pose/odom'
-        # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
-        self.drive_topic = '/vesc/input/navigation'
+        self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
+        # self.odom_topic = '/pf/pose/odom'
+        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        # self.drive_topic = '/vesc/input/navigation'
 
         self.lookahead = 1.0  # FILL IN #
         self.speed = 1.0  # FILL IN #
@@ -249,9 +249,13 @@ class PurePursuit(Node):
                     self.lookahead = self.MIN_LOOKAHEAD
                 # self.lookahead = 1.0
                 # self.lookahead = self.speed/2
+                self.lookahead = 3.0
+
                 if self.lookahead > distance_to_goal:
                     self.lookahead = distance_to_goal
                 #finding the circle intersection 
+
+                self.speed = 4.0
                 success = False
                 i = index
                 if i == len(relative_points) - 2:
@@ -273,17 +277,17 @@ class PurePursuit(Node):
 
                 if not success:
                     pass
-                    # self.get_logger().info("No intersection found")
+                    self.get_logger().info("No intersection found")
                 else:
                     #pure pursuit formula
 
                 # self.get_logger().info("distance: " + str(self.lookahead))
-                    # self.publish_circle_marker(self.current_pose, self.lookahead)
+                    self.publish_circle_marker(self.current_pose, self.lookahead)
                     turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
                     
-                    OFFSET = -0.05
-                    if self.speed > 3.0:
-                        turning_angle += OFFSET
+                    # OFFSET = -0.05
+                    # if self.speed > 3.0:
+                    #     turning_angle += OFFSET
                     if abs(turning_angle) > self.MAX_TURN:
                         turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
                     

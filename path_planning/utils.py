@@ -12,8 +12,8 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-# from skimage.morphology import dilation,erosion
-# from skimage.morphology import square,disk
+from skimage.morphology import dilation,erosion
+from skimage.morphology import square,disk
 
 import dubins
 
@@ -381,7 +381,7 @@ class Map():
 
         #here we are dilating the map in order to avoid cutting corners
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        # self.grid = erosion(self.grid, disk(8))
+        self.grid = erosion(self.grid, disk(8))
         # np.save('grid.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
 
