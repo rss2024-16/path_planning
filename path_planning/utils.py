@@ -15,6 +15,8 @@ from tf_transformations import euler_from_quaternion
 # from skimage.morphology import dilation,erosion
 # from skimage.morphology import square,disk
 
+import dubins
+
 import heapq
 from collections import deque
 # # import cv2
@@ -369,11 +371,13 @@ class Map():
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
-        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+
         # self.grid = dilation(self.grid,square(10))
-        # cv2.imwrite('test.png',self.grid)
-        self.grid = np.load('/root/racecar_ws/grid.npy')
-        # self.grid = np.load('/root/racecar_ws/grid.npy')
+        #cv2.imwrite('test2.png',self.grid)
+        # grid = cv2.imread('test.png', cv2.IMREAD_GRAYSCALE)
+        # cv2.imwrite('test3.png', grid)
+        # self.grid = np.load('grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
@@ -382,6 +386,18 @@ class Map():
         # cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
+
+        # Crazy RRT ball shit
+        v_unit_ball = 4/3 * math.pi
+
+        L = self._resolution
+        A = L**2
+        v_cell = A * math.pi
+
+        num_free_cells = np.count_nonzero(self.grid == 0)
+        v_free = v_cell * num_free_cells
+
+        self.gamma_estimate = (2**3) * (1 + 1/3) * (v_free / v_unit_ball)
 
     @property
     def height(self) -> int: return self._height
@@ -441,9 +457,9 @@ class Map():
         start_pose = self.discretize_point(start)
         goal = self.discretize_point(goal)
 
-        h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
-        #heuristic is just Euclidean distance
-        # h = lambda x,y: abs( (x[1]-x[0]) + (y[1]-y[0]) )
+        #h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2)
+        h = lambda p0, p1: np.linalg.norm(np.array([p0[0] - p1[0], p0[1] - p1[1]])) # I think this is faster
+        #heuristic is just Euclidean distance :(
         # h = lambda x,y: ( (y[0]-x[0])**2 + (y[1]-x[1])**2 )**(1/2) * np.arctan2(y[1]-y[0],x[1]-x[0])
         #arc length
 
@@ -454,12 +470,14 @@ class Map():
 
         q = PriorityQueue()
         q.put(start)
+        nodes = 0
 
         while not q.empty():
             node = q.get()
+            nodes += 1
 
             if node.pose == goal:
-                return node.extract_path()
+                return node.extract_path(), nodes
             
             for n in self.get_neighbors(node.pose):
                 try:
@@ -513,7 +531,7 @@ class Map():
             i = parent[i]
             path.append(i)
         
-        return path[::-1] #path start -> goal in tuples of x,y point nodes
+        return path[::-1], len(visited) #path start -> goal in tuples of x,y point nodes
     
     def generate_circle(self,point: Tuple[float,float]):
         u,v = self.xy_to_pixel(point)
@@ -545,8 +563,6 @@ class Map():
                 else:
                     p = path[idx]
                 
-                # prev1 = s1
-                # prev2 = s2
             except ZeroDivisionError: #one of the slopes are 0 so line is straight
                 path[idx] = 0
             idx+=1
@@ -557,11 +573,8 @@ class Map():
         """
         RRT done in continuous space, without discretization
         """
-        ## NOTES:
-        # Need to implement max length of a line segment
-        # Dynamics on trajectories
-        # Even RRT* might be suboptimal for compute time? Probably compare
-        # Divide by zero protection in straight path
+
+        MAX_DIST = 1
 
         class Node():
             def __init__(self, path, loc):
@@ -571,7 +584,7 @@ class Map():
                 self.children = []
 
         def dist(loc1, loc2):
-            return (loc1[0] - loc2[0])**2 + (loc1[1] - loc2[1])**2
+            return np.linalg.norm(np.array([loc1[0] - loc2[0], loc1[1] - loc2[1]]))
 
         def find_nearest(loc, parent):
             min_dist = dist(parent.loc, loc)
@@ -615,7 +628,7 @@ class Map():
             
             return True
 
-        def path_to(node):
+        def path_to(node): # This might be returning the path backwards
             full_path = node.path
 
             if node.parent != None:
@@ -630,12 +643,19 @@ class Map():
         # While previous point was not goal
         samples = 0
         max_samples = 50000
+        nodes = 0
         while previous.loc != goal and samples < max_samples: ## THIS TUPLE COMPARISON MIGHT NOT WORK, IDK
 
             # Pick a random grid cell or sample goal with set probability
             if random.random() > 0.15:
-                target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
+                while True:
+                    target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
+
+                    if self.is_free(target[0], target[1]):
+                        break
+
                 target = self.pixel_to_xy(target[0], target[1])
+                target = (target[0], target[1], random.uniform(-math.pi, math.pi))
             else:
                 target = goal
 
@@ -655,21 +675,26 @@ class Map():
 
                 # Set this new point as our previous node
                 previous = newest_node
+                nodes += 1
 
             samples += 1
 
         if samples < max_samples:
-            return path_to(previous)
+            return path_to(previous), nodes
         else:
             return None
 
     def rrt_star(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
 
+        # Parameters
+        MAX_DIST = 1.5
+        SEARCH_CONST = 6
+        SAMPLE_SIZE = 0.25
+        MAX_SAMPLES = 10000
+
         # Constants
-        MAX_DIST = 1
-        GOAL_EPS = 0.5
-        TURNING_RADIUS = 0.5
-        SEARCH_RADIUS = 2
+        GOAL_THRESH = 0.5
+        TURN_RADIUS = 1
 
         class Node():
             def __init__(self, path, loc, parent=None):
@@ -677,63 +702,34 @@ class Map():
                 self.loc = loc
                 self.parent = parent
                 self.cost = 0.0 if parent is None else parent.cost
-                self.children = []
 
-        def dist(loc1, loc2):      
+        def euclid(p0, p1):
+            return np.linalg.norm(np.array([p0[0] - p1[0], p0[1] - p1[1]]))
+
+        def path_length(p0, p1):
             # Generate the dubins path between the points
-            path = dubins.shortest_path(loc1, loc2, TURNING_RADIUS)
-            configurations, _ = path.sample_many(0.1)
+            path = dubins.shortest_path(loc1, loc2, TURN_RADIUS)
+            configurations, _ = path.sample_many(SAMPLE_SIZE)
 
-            cum_dist = 0
-            # Accumulate distance along full path
-            for i in range(len(configurations)):
-                if i != 0:
-                    p0 = configurations[i - 1]
-                    p1 = configurations[i]
-                    delta = np.array([p0[0] - p1[0], p0[1] - p1[1]])
-                    cum_dist += np.linalg.norm(delta)
+            # Estimated path length
+            return len(configurations) * SAMPLE_SIZE
 
-            return cum_dist
-
-        def euclid(loc1, loc2):
-            # Straight line distance between two points
-            return (loc1[0] - loc2[0])**2 + (loc1[1] - loc2[1])**2
-            
-        def find_nearest(new_loc, nodes):
-            return min(nodes, key=lambda node: euclid(node.loc, new_loc))
-
-        def interpolate_path(path, dist_threshold):
-            cum_dist = 0
-            index = len(path)
-                    
-            # Accumulate distance along path until threshold is passed 
-            for i in range(index):
-                if i != 0:
-                    p0 = path[i - 1]
-                    p1 = path[i]
-                    delta = np.array([p0[0] - p1[0], p0[1] - p1[1]])
-                    cum_dist += np.linalg.norm(delta)
-
-                if cum_dist >= dist_threshold:
-                    index = i
-                    break
-            
-            return path[:index]
-
-        def dubins_path(begin, end):
+        def steer(begin, end):
 
             # Generate the dubins path between the points
-            path = dubins.shortest_path(begin, end, TURNING_RADIUS)
-            configurations, _ = path.sample_many(0.1)
+            path = dubins.shortest_path(begin, end, TURN_RADIUS)
+            configurations, _ = path.sample_many(SAMPLE_SIZE)
 
-            # Interpolate it to our max distance
-            path = interpolate_path(configurations, MAX_DIST)
+            # Interpolate the end point if required
+            if len(configurations) * SAMPLE_SIZE > MAX_DIST:
+                configurations = configurations[:int(MAX_DIST / SAMPLE_SIZE)]
+                end = configurations[-1]
 
-            return path, path[-1]
+            return configurations, end
 
         def collision_free(path):
 
-            # Check every point along the path and return false if 
+            # Check every point along the path and return false if collision
             for point in path:
                 u, v = self.xy_to_pixel(point[0], point[1])
                 if not self.is_free(u, v):
@@ -741,46 +737,59 @@ class Map():
             
             return True
 
-        def path_to(node):
-            full_path = node.path[::-1]
-
-            if node.parent != None:
-                full_path = full_path + path_to(node.parent)
-
-            ### This is pretty bad, might actually not be needed
-            # Reconstruct the entire path without the theta 
-            real_full_path = []
-            for point in full_path:
-                real_full_path.append((point[0], point[1]))
- 
-            return real_full_path
-
         def rewire(nodes, new_node):
-            near_nodes = [node for node in nodes if euclid(node.loc, new_node.loc) < SEARCH_RADIUS]
+            n = len(nodes)
+            #radius = SEARCH_CONST * np.log(n) / n
+            radius = min((self.gamma_estimate * np.log(n) / n)**(1/3), 5)
 
+            # Find all nodes within our rewire distance
+            near_nodes = [node for node in nodes if euclid(node.loc, new_node.loc) < radius]
+
+            # For every node within the radius
             for node in near_nodes:
+
+                # Ignore our new node
                 if node.loc != new_node.loc:
-                    path, end = dubins_path(node.loc, new_node.loc)
-                    if collision_free(path):
-                        new_cost = node.cost + euclid(node.loc, new_node.loc)
+
+                    # Generate a dubins path between these nodes
+                    path = dubins.shortest_path(node.loc, new_node.loc, TURN_RADIUS)
+                    configurations, _ = path.sample_many(SAMPLE_SIZE)
+                    
+                    # No collisions along the new path
+                    if collision_free(configurations):
+
+                        # Find the cost for this node
+                        new_cost = node.cost + len(configurations) * SAMPLE_SIZE
+
+                        # If this node cost is better than the old cost
                         if new_cost < new_node.cost:
-                            try:
-                                new_node.parent.children.remove(new_node)
-                            except:
-                                pass
                             new_node.parent = node
+                            new_node.path = configurations
                             new_node.cost = new_cost
-                            node.children.append(new_node)
+
+        def path_to(node):
+            path = []
+
+            while node is not None:
+                path = node.path + path
+                node = node.parent
+
+            return path
+
+        ### END OF HELPER FUNCTIONS ###
 
         # Add start to the tree
         nodes = [Node([start], start)]
 
-        max_samples = 50000
-        # While previous point was not close enough to goal and below max samples
-        for i in range(max_samples):
+        # For the maximum number of samples
+        samples = 0
+        for _ in range(MAX_SAMPLES):
+            samples += 1
 
             # Pick a random grid cell or sample goal with set probability
             if random.random() > 0.15:
+
+                # Sample until you get a free point
                 while True:
                     target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
 
@@ -792,25 +801,26 @@ class Map():
             else:
                 target = goal
 
-            # Find the nearest node in the list
-            nearest_node = find_nearest(target, nodes)
+            # Find the nearest node in the list by euclid distance
+            nearest_node = min(nodes, key=lambda node: euclid(node.loc, target))
 
-            # Extend the newest point to the nearest node
-            nearest_path, act_target = dubins_path(nearest_node.loc, target)
+            # Extend the target to the nearest node
+            nearest_path, target = steer(nearest_node.loc, target)
 
             # If the extended path has no collisions
             if collision_free(nearest_path):
             
                 # Add the newest node to the list
-                newest_node = Node(nearest_path, act_target, parent=nearest_node)
-                newest_node.cost += euclid(nearest_node.loc, act_target)
+                newest_node = Node(nearest_path, target, parent=nearest_node)
+                newest_node.cost += len(nearest_path) * SAMPLE_SIZE
                 nodes.append(newest_node)
 
-                # Rewire the tree
+                # Rewire the tree as necessary
                 rewire(nodes, newest_node)
 
-                if euclid(newest_node.loc, goal) <= GOAL_EPS:
-                    return path_to(newest_node)
+                # If close enough to the goal, return
+                if euclid(newest_node.loc, goal) <= GOAL_THRESH:
+                    return path_to(newest_node), samples
 
         return None
 
