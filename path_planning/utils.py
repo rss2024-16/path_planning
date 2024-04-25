@@ -19,7 +19,7 @@ import heapq
 from collections import deque
 # # import cv2
 
-import dubins
+# import dubins
 
 EPSILON = 0.00000000001
 
@@ -369,10 +369,10 @@ class Map():
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
-        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = dilation(self.grid,square(10))
+        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        # self.grid = dilation(self.grid,square(10))
         # cv2.imwrite('test.png',self.grid)
-        # self.grid = np.load('/root/racecar_ws/grid.npy')
+        self.grid = np.load('/root/racecar_ws/grid.npy')
         # self.grid = np.load('/root/racecar_ws/grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
