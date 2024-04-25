@@ -100,12 +100,16 @@ class PathPlan(Node):
         end_point t: Ros2 Point
         """
         self.trajectory.clear()
-        
-        s = (self.s.x, self.s.y)
-        t = (self.t.x, self.t.y)
 
-        # s = (self.s.x, self.s.y, self.s_theta)
-        # t = (self.t.x, self.t.y, self.t_theta)
+        ALG = "bfs"
+        search_dict = {"bfs": self.occ_map.bfs, "rrt": self.occ_map.rrt, "rrt_star": self.occ_map.rrt_star, "astar": self.occ_map.astar}
+        
+        if ALG in ['bfs', 'astar']:
+            s = (self.s.x, self.s.y)
+            t = (self.t.x, self.t.y)
+        else:
+            s = (self.s.x, self.s.y, self.s_theta)
+            t = (self.t.x, self.t.y, self.t_theta)
 
         #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
         #path = self.occ_map.rrt_star(s, t)
@@ -116,7 +120,7 @@ class PathPlan(Node):
         
 
         # path = self.occ_map.rrt(s, t)
-        path , nodes = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        path , _ = search_dict[ALG](s, t) #path start -> goal in tuples of x,y point nodes (float, float)
         if len(path) == 0 or path is None: 
             self.get_logger().info("No path found!")
             return

@@ -3,7 +3,7 @@
         <param from="$(find-pkg-share path_planning)/config/real/config.yaml"/>
     </node>
     <node pkg="path_planning" exec="yeet" name="yeet">
-        <param from="$(find-pkg-share path_planning)/config/sim/yeet.yaml"/>
+        <param from="$(find-pkg-share path_planning)/config/real/yeet_irl.yaml"/>
     </node>
     <node pkg="localization" exec="particle_filter" name="particle_filter" output="screen">
         <param from="$(find-pkg-share localization)/real_params.yaml"/>

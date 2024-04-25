@@ -7,4 +7,4 @@ trajectory_planner:
 yeet:
   ros__parameters:
     odom_topic: "/pf/pose/odom"
-    drive_topic: "/drive"
+    drive_topic: "/vesc/input/navigation"
