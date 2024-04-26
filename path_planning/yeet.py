@@ -518,11 +518,11 @@ def main(args=None):
     try:
         rclpy.spin(follower)
     except KeyboardInterrupt:
-        np.save('sim_errors', follower.errors)
-        np.save('sim_slopes', follower.slopes)
-        np.save('sim_lookaheads', follower.lookaheads)
-        np.save('sim_speeds', follower.speeds)
-        np.save('sim_times', follower.times)
+        np.save('errors_4', follower.errors)
+        np.save('slopes_4', follower.slopes)
+        np.save('lookaheads_4', follower.lookaheads)
+        np.save('speeds_4', follower.speeds)
+        np.save('times_4', follower.times)
     rclpy.shutdown()
 
 
