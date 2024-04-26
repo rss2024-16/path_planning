@@ -13,6 +13,7 @@ import numpy as np
 
 from .utils import LineTrajectory
 import math
+import time
 
 """
 TODO:
@@ -97,6 +98,7 @@ class PurePursuit(Node):
         self.slopes =[]
         self.lookaheads = []
         self.speeds = []
+        self.times = []
 
     def closest_intersect(self):
         '''
@@ -286,6 +288,7 @@ class PurePursuit(Node):
                 self.slopes.append(slope)
                 self.lookaheads.append(self.lookahead)
                 self.speeds.append(self.speed)
+                self.times.append(self.get_clock().now().nanoseconds/1e9)
 
                 success = False
                 i = index
@@ -513,10 +516,11 @@ def main(args=None):
     try:
         rclpy.spin(follower)
     except KeyboardInterrupt:
-        np.save('errors', follower.errors)
-        np.save('slopes', follower.slopes)
-        np.save('lookaheads', follower.lookaheads)
-        np.save('speeds', follower.speeds)
+        np.save('sim_errors', follower.errors)
+        np.save('sim_slopes', follower.slopes)
+        np.save('sim_lookaheads', follower.lookaheads)
+        np.save('sim_speeds', follower.speeds)
+        np.save('sim_times', follower.times)
     rclpy.shutdown()
 
 
