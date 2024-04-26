@@ -140,6 +140,18 @@ class PathPlan(Node):
             return
 
         # path = self.occ_map.prune_path(path)
+
+        if nodes is not None:
+            x = []
+            y = []
+            # for path in paths:
+            for point in nodes:
+                x.append(point[0])
+                y.append(point[1])
+
+            self.get_logger().info("points generated")
+
+            self.publish_marker_array(self.tree_pub, x, y)
         
         if path is not None:
             self.trajectory.updatePoints(path)

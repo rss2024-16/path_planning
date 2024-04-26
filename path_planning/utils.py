@@ -701,6 +701,7 @@ class Map():
             return None
 
     def rrt_star(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
+
         # Constants
         M_TO_PIX = 1 / self._resolution
         GOAL_THRESH = (1 * M_TO_PIX)**2
@@ -817,7 +818,6 @@ class Map():
 
                 # Sample until you get a free point
                 while True:
-                    # Sample from grid
                     target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
 
                     if self.one_grid[target[1] * self._width + target[0]] == 0:
