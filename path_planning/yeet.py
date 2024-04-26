@@ -13,15 +13,22 @@ import numpy as np
 
 from .utils import LineTrajectory
 import math
+import time
 
 """
 TODO:
-np argmin
-optimize for time
-test irl
-fix lookahead
-bug if goal pose is faceing forward
+np argmin optimize for time
+bug if goal pose is facing forward
 xdot sometimes gives answer if initial trajectory is also ahead of goal
+
+error plots
+Make sure you mention your method for tuning the controller to closely track trajectories. 
+(Hint: include error plots from rqt_plot)
+
+y distance from closest segment
+slope
+lookahead
+speed
 
 ros2 launch path_planning sim_yeet.launch.xml
 """
@@ -85,6 +92,13 @@ class PurePursuit(Node):
         self.current_pose = None
         self.intersections = None
         self.turning_markers = []
+
+
+        self.errors = []
+        self.slopes =[]
+        self.lookaheads = []
+        self.speeds = []
+        self.times = []
 
     def closest_intersect(self):
         '''
@@ -239,6 +253,7 @@ class PurePursuit(Node):
                 drive_cmd.drive.speed = 0.0
                 drive_cmd.drive.steering_angle = 0.0
             else:
+                error_from_trajectory = closest_point[1]
                 slope = closest_point[1]/closest_point[0] #y /x 
                 if abs(slope) > 4:
                     #turn coming up
@@ -271,6 +286,12 @@ class PurePursuit(Node):
                 if self.lookahead > distance_to_goal:
                     self.lookahead = distance_to_goal
                 #finding the circle intersection 
+
+                self.errors.append(error_from_trajectory)
+                self.slopes.append(slope)
+                self.lookaheads.append(self.lookahead)
+                self.speeds.append(self.speed)
+                self.times.append(self.get_clock().now().nanoseconds/1e9)
 
                 success = False
                 i = index
@@ -494,9 +515,15 @@ class PurePursuit(Node):
 def main(args=None):
     rclpy.init(args=args)
     follower = PurePursuit()
-    rclpy.spin(follower)
+    try:
+        rclpy.spin(follower)
+    except KeyboardInterrupt:
+        np.save('sim_errors', follower.errors)
+        np.save('sim_slopes', follower.slopes)
+        np.save('sim_lookaheads', follower.lookaheads)
+        np.save('sim_speeds', follower.speeds)
+        np.save('sim_times', follower.times)
     rclpy.shutdown()
-
 
 
 

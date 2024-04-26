@@ -30,6 +30,7 @@ First run
 ros2 launch path_planning sim_plan.launch.xml
 then 
 ros2 launch racecar_simulator simulate.launch.xml
+ssh -L 6081:localhost:6081 racecar@192.168.1.85
 '''
 class LineTrajectory:
     """ A class to wrap and work with piecewise linear trajectories. """
