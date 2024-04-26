@@ -7,6 +7,7 @@ from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory, Map
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from visualization_msgs.msg import Marker, MarkerArray
+# import cProfile
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -110,8 +111,18 @@ class PathPlan(Node):
         s = (self.s.x, self.s.y, self.s_theta)
         t = (self.t.x, self.t.y, self.t_theta)
 
-        #path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        paths, path = self.occ_map.rrt_star(s, t)
+        nodes = None
+
+
+        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+
+        # profiler = cProfile.Profile()
+        # profiler.enable()
+
+        #path, nodes = self.occ_map.rrt_star(s, t)
+        # profiler.disable()
+        # profiler.print_stats(sort='time')
+
         #path = self.occ_map.rrt(s, t)
 
         # path = self.occ_map.astar(s, t)
@@ -126,21 +137,22 @@ class PathPlan(Node):
 
         # path = self.occ_map.prune_path(path)
 
-        self.get_logger().info("returned")
+        #self.get_logger().info("returned")
 
-        x = []
-        y = []
-        # for path in paths:
-        for point in paths:
-            x.append(point[0])
-            y.append(point[1])
+        if nodes is not None:
+            x = []
+            y = []
+            # for path in paths:
+            for point in nodes:
+                x.append(point[0])
+                y.append(point[1])
 
-        self.get_logger().info("points generated")
+            self.get_logger().info("points generated")
 
-        self.publish_marker_array(self.tree_pub, x, y)
+            self.publish_marker_array(self.tree_pub, x, y)
         
-        
-        self.trajectory.updatePoints(path)
+        if path is not None:
+            self.trajectory.updatePoints(path)
 
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
