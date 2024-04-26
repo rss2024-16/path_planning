@@ -1,0 +1,10 @@
+trajectory_planner:
+  ros__parameters:
+    odom_topic: "/pf/pose/odom"
+    map_topic: "/map"
+    scan_topic: "/scan"
+    initial_pose_topic: "/initialpose"
+yeet:
+  ros__parameters:
+    odom_topic: "/pf/pose/odom"
+    drive_topic: "/vesc/input/navigation"

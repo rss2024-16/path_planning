@@ -12,10 +12,10 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-from skimage.morphology import dilation,erosion
-from skimage.morphology import square,disk
+# from skimage.morphology import dilation,erosion
+# from skimage.morphology import square,disk
 
-import dubins
+# import dubins
 
 import heapq
 from collections import deque
@@ -30,6 +30,7 @@ First run
 ros2 launch path_planning sim_plan.launch.xml
 then 
 ros2 launch racecar_simulator simulate.launch.xml
+ssh -L 6081:localhost:6081 racecar@192.168.1.85
 '''
 class LineTrajectory:
     """ A class to wrap and work with piecewise linear trajectories. """
@@ -382,7 +383,7 @@ class Map():
 
         #here we are dilating the map in order to avoid cutting corners
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = erosion(self.grid, disk(8))
+        # self.grid = erosion(self.grid, disk(8))
         # np.save('grid.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
 
@@ -489,11 +490,9 @@ class Map():
 
         q = PriorityQueue()
         q.put(start)
-        nodes = 0
 
         while not q.empty():
             node = q.get()
-            nodes += 1
 
             if node.pose == goal:
                 return node.extract_path()
@@ -662,7 +661,6 @@ class Map():
         # While previous point was not goal
         samples = 0
         max_samples = 50000
-        nodes = 0
         while previous.loc != goal and samples < max_samples: ## THIS TUPLE COMPARISON MIGHT NOT WORK, IDK
 
             # Pick a random grid cell or sample goal with set probability
@@ -694,7 +692,6 @@ class Map():
 
                 # Set this new point as our previous node
                 previous = newest_node
-                nodes += 1
 
             samples += 1
 
@@ -704,6 +701,16 @@ class Map():
             return None
 
     def rrt_star(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
+        # Constants
+        M_TO_PIX = 1 / self._resolution
+        GOAL_THRESH = (1 * M_TO_PIX)**2
+        TURN_RADIUS = 1 * M_TO_PIX
+
+        # Parameters
+        MAX_DIST = 1.5
+        SEARCH_CONST = 6
+        SAMPLE_SIZE = 0.25
+        MAX_SAMPLES = 10000
 
         # Constants
         M_TO_PIX = 1 / self._resolution
@@ -860,7 +867,7 @@ class Map():
         neighbors = []
 
         # radius = 8
-        step = 1.0
+        step = 0.5
         possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
         for (dx, dy) in possibilities:
             u, v = self.xy_to_pixel(x + dx, y + dy)

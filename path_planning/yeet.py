@@ -13,14 +13,22 @@ import numpy as np
 
 from .utils import LineTrajectory
 import math
+import time
 
 """
 TODO:
-np argmin
-optimize for time
-test irl
-fix lookahead
-bug if goal pose is faceing forward
+np argmin optimize for time
+bug if goal pose is facing forward
+xdot sometimes gives answer if initial trajectory is also ahead of goal
+
+error plots
+Make sure you mention your method for tuning the controller to closely track trajectories. 
+(Hint: include error plots from rqt_plot)
+
+y distance from closest segment
+slope
+lookahead
+speed
 
 ros2 launch path_planning sim_yeet.launch.xml
 """
@@ -36,19 +44,17 @@ class PurePursuit(Node):
         self.declare_parameter('drive_topic', "default")
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        # self.odom_topic = '/pf/pose/odom'
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
-        # self.drive_topic = '/vesc/input/navigation'
 
         self.lookahead = 1.0  # FILL IN #
         self.speed = 1.0  # FILL IN #
         self.wheelbase_length = 0.3  # FILL IN #
 
         self.MIN_SPEED = 1.6
-        self.MAX_SPEED = 1.6
+        self.MAX_SPEED = 4.0
 
         self.MAX_LOOKAHEAD = 3.0
-        self.MIN_LOOKAHEAD = 0.5
+        self.MIN_LOOKAHEAD = 0.75
 
         self.MAX_TURN = 0.34
 
@@ -74,6 +80,8 @@ class PurePursuit(Node):
         self.circle = self.create_publisher(MarkerArray, '/circle_marker', 1)
         self.intersection = self.create_publisher(Marker,'/intersection',1)
         self.closest = self.create_publisher(Marker,'/closest',1)
+        self.segments = self.create_publisher(MarkerArray, '/segments', 1)
+        self.turning_points = self.create_publisher(MarkerArray, '/turning_points', 1)
 
         # self.intersection_1 = self.create_publisher(Marker,'/intersection_1',1)
         # self.intersection_2 = self.create_publisher(Marker, '/intersection_2' ,1)
@@ -83,6 +91,14 @@ class PurePursuit(Node):
         self.points = None
         self.current_pose = None
         self.intersections = None
+        self.turning_markers = []
+
+
+        self.errors = []
+        self.slopes =[]
+        self.lookaheads = []
+        self.speeds = []
+        self.times = []
 
     def closest_intersect(self):
         '''
@@ -91,6 +107,7 @@ class PurePursuit(Node):
         if self.current_pose is not None and self.intersections is not None:
 
             relative_points = self.intersections - self.current_pose
+            relative_points = np.array([np.matmul(i,self.transform(self.current_pose[2])) for i in relative_points])
             xdot = np.dot(relative_points[:,0],1)
 
             filtered_points = relative_points[(xdot > 0)] #filter to only look at points ahead (same direction)
@@ -138,8 +155,8 @@ class PurePursuit(Node):
 
         closest_intersect = self.closest_intersect()
         if closest_intersect is not None:
-            closest_point = closest_intersect[0]
-            closest_global = np.matmul(closest_point, np.linalg.inv(R)) + self.current_pose
+            closest_point_intersect = closest_intersect[0]
+            closest_global = np.matmul(closest_point_intersect, np.linalg.inv(R)) + self.current_pose
             self.closest.publish(self.to_marker(closest_global, 0, [0.0, 0.0, 1.0], 0.5))
         
         if closest_intersect is not None:
@@ -149,11 +166,11 @@ class PurePursuit(Node):
 
         if closest_point is None:
             # self.get_logger().info("no points in front of car")
-            return True, None, None, None   
-        if distance_to_goal < 0.001: 
-            # self.get_logger().info("close enough to goal")
-            return True, None, None, None
-        return closest_point, index, distance_to_goal, closest_intersect_distance
+            return True, None, None, None, None
+        if distance_to_goal < 0.05: 
+            self.get_logger().info("close enough to goal")
+            return True, None, None, None, None
+        return closest_point, index, distance_to_goal, closest_intersect_distance, closest_point_intersect
     
 
     def find_circle_intersection(self, center, radius, p1, p2, R):
@@ -225,7 +242,7 @@ class PurePursuit(Node):
         if self.points is not None:
             differences = self.points - self.current_pose
             relative_points = np.array([np.matmul(i,R) for i in differences])
-            closest_point, index, distance_to_goal, intersect_distance = \
+            closest_point, index, distance_to_goal, intersect_distance, closest_point_intersect = \
                 self.find_closest_point_on_trajectory(relative_points, R)
             # self.get_logger().info("index: " + str(index))
             # self.get_logger().info("distance to goal: " + str(distance_to_goal))
@@ -236,26 +253,46 @@ class PurePursuit(Node):
                 drive_cmd.drive.speed = 0.0
                 drive_cmd.drive.steering_angle = 0.0
             else:
-                slope = closest_point[1]/closest_point[0]
+                error_from_trajectory = closest_point[1]
+                slope = closest_point[1]/closest_point[0] #y /x 
+                if abs(slope) > 4:
+                    #turn coming up
+                    #publish car's current position to see where it starts to turn
+                    self.turning_markers.append(self.to_marker(self.current_pose, len(self.turning_markers), [1.0, 0.0, 0.0], 0.5))
+                    markerarray = MarkerArray()
+                    markerarray.markers = self.turning_markers
+                    self.turning_points.publish(markerarray)
+                # self.get_logger().info(f'slope: {slope}')
+
                 self.speed = 4.0 * np.exp(-abs(slope))
+                # dist = np.linalg(closest_point_intersect[0], closest_point_intersect[1])
+                # self.speed = min(max(dist, 2.0), 5.0)
+
                 if self.speed < self.MIN_SPEED:
                     self.speed = self.MIN_SPEED
 
                 # self.get_logger().info(f'intersect dist: {intersect_distance}')
                 self.lookahead = intersect_distance if intersect_distance is not None and\
-                                intersect_distance < self.speed*.5 else self.speed*.5
+                                intersect_distance < self.speed else self.speed
+
+                # self.lookahead = 1.0
+                # self.lookahead = self.speed/2
+                # self.lookahead = 3.0
+                # self.speed = 4.0
 
                 if self.lookahead < self.MIN_LOOKAHEAD:
                     self.lookahead = self.MIN_LOOKAHEAD
-                # self.lookahead = 1.0
-                # self.lookahead = self.speed/2
-                self.lookahead = 3.0
 
                 if self.lookahead > distance_to_goal:
                     self.lookahead = distance_to_goal
                 #finding the circle intersection 
 
-                self.speed = 4.0
+                self.errors.append(error_from_trajectory)
+                self.slopes.append(slope)
+                self.lookaheads.append(self.lookahead)
+                self.speeds.append(self.speed)
+                self.times.append(self.get_clock().now().nanoseconds/1e9)
+
                 success = False
                 i = index
                 if i == len(relative_points) - 2:
@@ -277,28 +314,25 @@ class PurePursuit(Node):
 
                 if not success:
                     pass
-                    self.get_logger().info("No intersection found")
+                    # self.get_logger().info("No intersection found")
                 else:
                     #pure pursuit formula
 
-                # self.get_logger().info("distance: " + str(self.lookahead))
+                    # self.get_logger().info("distance: " + str(self.lookahead))
                     self.publish_circle_marker(self.current_pose, self.lookahead)
                     turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
                     
-                    # OFFSET = -0.05
-                    # if self.speed > 3.0:
-                    #     turning_angle += OFFSET
+                    OFFSET = -0.05
+                    turning_angle += OFFSET
                     if abs(turning_angle) > self.MAX_TURN:
                         turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
                     
                     drive_cmd.drive.speed = self.speed
                     drive_cmd.drive.steering_angle = turning_angle
-                    try:
-                        intersect = np.array([intersect[0],intersect[1],0])
-                        global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
-                        self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
-                    except:
-                        pass
+                    intersect = np.array([intersect[0],intersect[1],0])
+                    global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
+                    self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
+                 
             self.drive_pub.publish(drive_cmd)
 
         
@@ -410,6 +444,17 @@ class PurePursuit(Node):
 
         intersections.append(path[-1])
         self.intersections = intersections
+        markers = []
+        count = 0
+        for p in self.intersections:
+            marker = self.to_marker(p, count)
+            markers.append(marker)
+            count+=1
+
+        markerarray = MarkerArray()
+        markerarray.markers = markers
+        self.segments.publish(markerarray)
+
         # self.get_logger().info(f'{self.intersections}')
 
     def to_marker(self,position,id = 1,rgb=[1.0,0.0,0.0],scale=0.25):
@@ -470,9 +515,15 @@ class PurePursuit(Node):
 def main(args=None):
     rclpy.init(args=args)
     follower = PurePursuit()
-    rclpy.spin(follower)
+    try:
+        rclpy.spin(follower)
+    except KeyboardInterrupt:
+        np.save('errors_4', follower.errors)
+        np.save('slopes_4', follower.slopes)
+        np.save('lookaheads_4', follower.lookaheads)
+        np.save('speeds_4', follower.speeds)
+        np.save('times_4', follower.times)
     rclpy.shutdown()
-
 
 
 
