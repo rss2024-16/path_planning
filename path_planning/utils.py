@@ -15,7 +15,7 @@ from tf_transformations import euler_from_quaternion
 # from skimage.morphology import dilation,erosion
 # from skimage.morphology import square,disk
 
-# import dubins
+import dubins
 
 import heapq
 from collections import deque
@@ -368,8 +368,6 @@ class Map():
                                              [0, 0, 1]
                                             ])
         
-        self.MAX_TURN_RADIUS = 0.34
-        
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
         #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
@@ -703,26 +701,16 @@ class Map():
     def rrt_star(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
 
         # Constants
-        M_TO_PIX = 1 / self._resolution
-        GOAL_THRESH = (1 * M_TO_PIX)**2
-        TURN_RADIUS = 1 * M_TO_PIX
+        M_TO_PIX = 1 / self._resolution     # Converts meters (x, y) to pixels (u, v)
+        GOAL_THRESH = (1 * M_TO_PIX)**2     # Distance to goal for termination
+        MIN_TURN = 0.4 * M_TO_PIX           # Minimum turn radius determined by car
 
         # Parameters
-        MAX_DIST = 1.5
-        SEARCH_CONST = 6
-        SAMPLE_SIZE = 0.25
-        MAX_SAMPLES = 10000
-
-        # Constants
-        M_TO_PIX = 1 / self._resolution
-        GOAL_THRESH = (1 * M_TO_PIX)**2
-        TURN_RADIUS = 1 * M_TO_PIX
-
-        # Parameters
-        MAX_DIST = 1 * M_TO_PIX
-        MAX_RADIUS = 5 * M_TO_PIX
-        SAMPLE_SIZE = 0.25 * M_TO_PIX
-        MAX_SAMPLES = 20000
+        MAX_LENGTH = 1 * M_TO_PIX           # Max segment length
+        MEAN_TURN = 1 * M_TO_PIX            # Average turn radius (gaussian)
+        MAX_SEARCH_RADIUS = 5 * M_TO_PIX    # Maximum distance to rewire nodes
+        SAMPLE_SIZE = 0.25 * M_TO_PIX       # How often Dubins are sampled
+        MAX_SAMPLES = 20000                 # Num of samples before termination
 
         class Node():
             def __init__(self, path, loc, parent=None):
@@ -734,12 +722,12 @@ class Map():
         def steer(begin, end):
 
             # Generate the dubins path between the points
-            path = dubins.shortest_path(begin, end, TURN_RADIUS)
+            path = dubins.shortest_path(begin, end, max(MEAN_TURN * np.random.normal(loc=1.0), MIN_TURN))
             configurations, _ = path.sample_many(SAMPLE_SIZE)
 
             # Interpolate the end point if required
-            if len(configurations) * SAMPLE_SIZE > MAX_DIST:
-                configurations = configurations[:int(MAX_DIST / SAMPLE_SIZE)]
+            if len(configurations) * SAMPLE_SIZE > MAX_LENGTH:
+                configurations = configurations[:int(MAX_LENGTH / SAMPLE_SIZE)]
                 end = configurations[-1]
 
             return configurations, end
@@ -760,7 +748,7 @@ class Map():
 
         def rewire(nodes, new_node):
             n = len(nodes)
-            radius = min((self.gamma_estimate * np.log10(n) / n)**(1/3), MAX_RADIUS)
+            radius = min((self.gamma_estimate * np.log10(n) / n)**(1/3), MAX_SEARCH_RADIUS)
 
             # Find all nodes within our rewire distance
             near_nodes = [node for node in nodes if (node.loc[0] - new_node.loc[0])**2 + (node.loc[1] - new_node.loc[1]) < radius**2]
@@ -772,7 +760,7 @@ class Map():
                 if node.loc != new_node.loc:
 
                     # Generate a dubins path between these nodes
-                    path = dubins.shortest_path(node.loc, new_node.loc, TURN_RADIUS)
+                    path = dubins.shortest_path(node.loc, new_node.loc, max(MEAN_TURN * np.random.normal(loc=1.0), MIN_TURN))
                     configurations, _ = path.sample_many(SAMPLE_SIZE)
                     
                     # No collisions along the new path

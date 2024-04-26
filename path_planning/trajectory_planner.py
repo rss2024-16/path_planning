@@ -105,7 +105,7 @@ class PathPlan(Node):
         """
         self.trajectory.clear()
 
-        ALG = "bfs"
+        ALG = "rrt_star"
         search_dict = {"bfs": self.occ_map.bfs, "rrt": self.occ_map.rrt, "rrt_star": self.occ_map.rrt_star, "astar": self.occ_map.astar}
         
         if ALG in ['bfs', 'astar', 'rrt']:
@@ -116,9 +116,6 @@ class PathPlan(Node):
             t = (self.t.x, self.t.y, self.t_theta)
 
         nodes = None
-
-
-        path = self.occ_map.bfs(s, t) #path start -> goal in tuples of x,y point nodes (float, float)
 
         # profiler = cProfile.Profile()
         # profiler.enable()
@@ -135,6 +132,10 @@ class PathPlan(Node):
 
         # path = self.occ_map.rrt(s, t)
         path = search_dict[ALG](s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        if isinstance(path, tuple):
+            nodes = path[1]
+            path = path[0]
+
         if len(path) == 0 or path is None: 
             self.get_logger().info("No path found!")
             return
