@@ -12,10 +12,10 @@ import math
 
 from tf_transformations import euler_from_quaternion
 
-from skimage.morphology import dilation,erosion
-from skimage.morphology import square,disk
+# from skimage.morphology import dilation,erosion
+# from skimage.morphology import square,disk
 
-import dubins
+# import dubins
 
 import heapq
 from collections import deque
@@ -377,11 +377,11 @@ class Map():
         #cv2.imwrite('test2.png',self.grid)
         # grid = cv2.imread('test.png', cv2.IMREAD_GRAYSCALE)
         # cv2.imwrite('test3.png', grid)
-        # self.grid = np.load('grid.npy')
+        self.grid = np.load('grid.npy')
 
         #here we are dilating the map in order to avoid cutting corners
         # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = erosion(self.grid, disk(8))
+        # self.grid = erosion(self.grid, disk(8))
         # np.save('grid.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
 
@@ -470,14 +470,12 @@ class Map():
 
         q = PriorityQueue()
         q.put(start)
-        nodes = 0
 
         while not q.empty():
             node = q.get()
-            nodes += 1
 
             if node.pose == goal:
-                return node.extract_path(), nodes
+                return node.extract_path()
             
             for n in self.get_neighbors(node.pose):
                 try:
@@ -531,7 +529,7 @@ class Map():
             i = parent[i]
             path.append(i)
         
-        return path[::-1], len(visited) #path start -> goal in tuples of x,y point nodes
+        return path[::-1] #path start -> goal in tuples of x,y point nodes
     
     def generate_circle(self,point: Tuple[float,float]):
         u,v = self.xy_to_pixel(point)
@@ -643,7 +641,6 @@ class Map():
         # While previous point was not goal
         samples = 0
         max_samples = 50000
-        nodes = 0
         while previous.loc != goal and samples < max_samples: ## THIS TUPLE COMPARISON MIGHT NOT WORK, IDK
 
             # Pick a random grid cell or sample goal with set probability
@@ -675,12 +672,11 @@ class Map():
 
                 # Set this new point as our previous node
                 previous = newest_node
-                nodes += 1
 
             samples += 1
 
         if samples < max_samples:
-            return path_to(previous), nodes
+            return path_to(previous)
         else:
             return None
 
@@ -688,13 +684,13 @@ class Map():
 
         # Parameters
         MAX_DIST = 1.5
-        SEARCH_CONST = 6
-        SAMPLE_SIZE = 0.25
-        MAX_SAMPLES = 10000
+        MAX_RADIUS = 5
+        SAMPLE_SIZE = 0.1
+        MAX_SAMPLES = 7000
 
         # Constants
-        GOAL_THRESH = 0.5
-        TURN_RADIUS = 1
+        GOAL_THRESH = 1
+        TURN_RADIUS = 2
 
         class Node():
             def __init__(self, path, loc, parent=None):
@@ -731,8 +727,7 @@ class Map():
 
         def rewire(nodes, new_node):
             n = len(nodes)
-            #radius = SEARCH_CONST * np.log(n) / n
-            radius = min((self.gamma_estimate * np.log(n) / n)**(1/3), 5)
+            radius = min((self.gamma_estimate * np.log(n) / n)**(1/3), MAX_RADIUS)
 
             # Find all nodes within our rewire distance
             near_nodes = [node for node in nodes if euclid(node.loc, new_node.loc) < radius]
@@ -785,7 +780,7 @@ class Map():
                 while True:
                     target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
 
-                    if self.is_free(target[0], target[1]):
+                    if self.is_free(target[0], target[1]) :
                         break
 
                 target = self.pixel_to_xy(target[0], target[1])
@@ -811,8 +806,17 @@ class Map():
                 rewire(nodes, newest_node)
 
                 # If close enough to the goal, return
-                if euclid(newest_node.loc, goal) <= GOAL_THRESH:
-                    return path_to(newest_node), samples
+                if euclid(newest_node.loc, goal) <= GOAL_THRESH:        
+
+                    # all_nodes = []
+                    # for n in nodes:
+                    #     paths.append(n.loc)
+
+                    return path_to(newest_node)
+
+        # all_nodes = []
+        # for n in nodes:
+        #     all_nodes.append(n.loc)
 
         return None
 

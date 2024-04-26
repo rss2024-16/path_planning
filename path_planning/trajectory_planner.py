@@ -104,7 +104,7 @@ class PathPlan(Node):
         ALG = "bfs"
         search_dict = {"bfs": self.occ_map.bfs, "rrt": self.occ_map.rrt, "rrt_star": self.occ_map.rrt_star, "astar": self.occ_map.astar}
         
-        if ALG in ['bfs', 'astar']:
+        if ALG in ['bfs', 'astar', 'rrt']:
             s = (self.s.x, self.s.y)
             t = (self.t.x, self.t.y)
         else:
@@ -120,7 +120,7 @@ class PathPlan(Node):
         
 
         # path = self.occ_map.rrt(s, t)
-        path , _ = search_dict[ALG](s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+        path = search_dict[ALG](s, t) #path start -> goal in tuples of x,y point nodes (float, float)
         if len(path) == 0 or path is None: 
             self.get_logger().info("No path found!")
             return

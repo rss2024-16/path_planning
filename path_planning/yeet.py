@@ -152,11 +152,11 @@ class PurePursuit(Node):
 
         if closest_point is None:
             # self.get_logger().info("no points in front of car")
-            return True, None, None, None   
+            return True, None, None, None, None
         if distance_to_goal < 0.05: 
             self.get_logger().info("close enough to goal")
-            return True, None, None, None
-        return closest_point, index, distance_to_goal, closest_intersect_distance
+            return True, None, None, None, None
+        return closest_point, index, distance_to_goal, closest_intersect_distance, closest_point_intersect
     
 
     def find_circle_intersection(self, center, radius, p1, p2, R):
@@ -228,7 +228,7 @@ class PurePursuit(Node):
         if self.points is not None:
             differences = self.points - self.current_pose
             relative_points = np.array([np.matmul(i,R) for i in differences])
-            closest_point, index, distance_to_goal, intersect_distance = \
+            closest_point, index, distance_to_goal, intersect_distance, closest_point_intersect = \
                 self.find_closest_point_on_trajectory(relative_points, R)
             # self.get_logger().info("index: " + str(index))
             # self.get_logger().info("distance to goal: " + str(distance_to_goal))
@@ -250,6 +250,9 @@ class PurePursuit(Node):
                 # self.get_logger().info(f'slope: {slope}')
 
                 self.speed = 4.0 * np.exp(-abs(slope))
+                # dist = np.linalg(closest_point_intersect[0], closest_point_intersect[1])
+                # self.speed = min(max(dist, 2.0), 5.0)
+
                 if self.speed < self.MIN_SPEED:
                     self.speed = self.MIN_SPEED
 
@@ -298,9 +301,8 @@ class PurePursuit(Node):
                     self.publish_circle_marker(self.current_pose, self.lookahead)
                     turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
                     
-                    # OFFSET = -0.05
-                    # if self.speed > 3.0:
-                    #     turning_angle += OFFSET
+                    OFFSET = -0.05
+                    turning_angle += OFFSET
                     if abs(turning_angle) > self.MAX_TURN:
                         turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
                     
