@@ -159,7 +159,7 @@ class PurePursuit(Node):
             #check that the point is in front of current pose
             xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
 
-            filtered_points = relative_points[(xdot > 0.4)] #filter to only look at points ahead (same direction)
+            filtered_points = relative_points[(xdot > 0)] #filter to only look at points ahead (same direction)
 
             if len(filtered_points) == 0:
                 if xdot[-1] >= 0:
@@ -316,7 +316,7 @@ class PurePursuit(Node):
             drive_cmd.drive.speed = self.speed
             drive_cmd.drive.steering_angle = turning_angle
 
-            self.drive_pub.publish(drive_cmd)
+            # self.drive_pub.publish(drive_cmd)
 
     def get_intersections(self):
         '''
