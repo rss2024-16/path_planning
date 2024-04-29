@@ -15,7 +15,7 @@ from tf_transformations import euler_from_quaternion
 from skimage.morphology import dilation,erosion
 from skimage.morphology import square,disk
 
-# import dubins
+import dubins
 
 import heapq
 from collections import deque
@@ -368,21 +368,21 @@ class Map():
                                              [0, 0, 1]
                                             ])
         
-        self.MAX_TURN_RADIUS = 0.34
-        
         #2d (int) array of pixel coords indexed by grid[v][u] 
 
-        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
 
         # self.grid = dilation(self.grid,square(10))
         #cv2.imwrite('test2.png',self.grid)
         # grid = cv2.imread('test.png', cv2.IMREAD_GRAYSCALE)
         # cv2.imwrite('test3.png', grid)
         # self.grid = np.load('grid.npy')
+        # self.one_grid = self.grid.flatten()
 
         #here we are dilating the map in order to avoid cutting corners
-        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
         self.grid = erosion(self.grid, disk(8))
+        self.one_grid = self.grid.flatten() 
         # np.save('grid.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
 
@@ -428,6 +428,24 @@ class Map():
         u, v = q[:2, :]
 
         return (int(round(u[0])), int(round(v[0])))
+
+    def xyt_to_pixel(self, x: float, y: float, theta: float) -> Tuple[int, int, float]:
+        """
+        Converts x,y,theta point in map frame to u,v pixel in occupancy grid
+        """
+        q = np.array([[x], [y], [0]]) #3x1 x,y,z
+
+        q = q - self.origin_p
+        
+        _, _, yaw = euler_from_quaternion(self.origin_o)
+
+        q = np.matmul(self.R_z(-yaw),q)
+
+        q = q / self._resolution
+
+        u, v = q[:2, :]
+
+        return (int(round(u[0])), int(round(v[0])), theta + yaw)
     
     def pixel_to_xy(self, u: int, v: int) -> Tuple[float, float]:
         """
@@ -622,7 +640,7 @@ class Map():
         def collision_free(path):
             for point in path:
                 u, v = self.xy_to_pixel(point[0], point[1])
-                if not self.is_free(u, v):
+                if not self.one_grid[v * self._width + u] == 0:
                     return False
             
             return True
@@ -649,7 +667,7 @@ class Map():
                 while True:
                     target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
 
-                    if self.is_free(target[0], target[1]):
+                    if self.grid[target[1]][target[0]] == 0:
                         break
 
                 target = self.pixel_to_xy(target[0], target[1])
@@ -683,15 +701,17 @@ class Map():
 
     def rrt_star(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
 
-        # Parameters
-        MAX_DIST = 1.5
-        MAX_RADIUS = 5
-        SAMPLE_SIZE = 0.1
-        MAX_SAMPLES = 7000
-
         # Constants
-        GOAL_THRESH = 1
-        TURN_RADIUS = 2
+        M_TO_PIX = 1 / self._resolution     # Converts meters (x, y) to pixels (u, v)
+        GOAL_THRESH = (1 * M_TO_PIX)**2     # Distance to goal for termination
+        MIN_TURN = 0.4 * M_TO_PIX           # Minimum turn radius determined by car
+
+        # Parameters
+        MAX_LENGTH = 1 * M_TO_PIX           # Max segment length
+        MEAN_TURN = 1 * M_TO_PIX            # Average turn radius (gaussian)
+        MAX_SEARCH_RADIUS = 5 * M_TO_PIX    # Maximum distance to rewire nodes
+        SAMPLE_SIZE = 0.25 * M_TO_PIX       # How often Dubins are sampled
+        MAX_SAMPLES = 20000                 # Num of samples before termination
 
         class Node():
             def __init__(self, path, loc, parent=None):
@@ -700,38 +720,39 @@ class Map():
                 self.parent = parent
                 self.cost = 0.0 if parent is None else parent.cost
 
-        def euclid(p0, p1):
-            return np.linalg.norm(np.array([p0[0] - p1[0], p0[1] - p1[1]]))
-
         def steer(begin, end):
 
             # Generate the dubins path between the points
-            path = dubins.shortest_path(begin, end, TURN_RADIUS)
+            path = dubins.shortest_path(begin, end, max(MEAN_TURN * np.random.normal(loc=1.0), MIN_TURN))
             configurations, _ = path.sample_many(SAMPLE_SIZE)
 
             # Interpolate the end point if required
-            if len(configurations) * SAMPLE_SIZE > MAX_DIST:
-                configurations = configurations[:int(MAX_DIST / SAMPLE_SIZE)]
+            if len(configurations) * SAMPLE_SIZE > MAX_LENGTH:
+                configurations = configurations[:int(MAX_LENGTH / SAMPLE_SIZE)]
                 end = configurations[-1]
 
             return configurations, end
 
         def collision_free(path):
 
+            # Broad phase detection check middle point
+            point = path[len(path) // 2]
+            if not self.one_grid[int(point[1]) * self._width + int(point[0])] == 0:
+                return False
+
             # Check every point along the path and return false if collision
             for point in path:
-                u, v = self.xy_to_pixel(point[0], point[1])
-                if not self.is_free(u, v):
+                if not self.one_grid[int(point[1]) * self._width + int(point[0])] == 0:
                     return False
             
             return True
 
         def rewire(nodes, new_node):
             n = len(nodes)
-            radius = min((self.gamma_estimate * np.log(n) / n)**(1/3), MAX_RADIUS)
+            radius = min((self.gamma_estimate * np.log10(n) / n)**(1/3), MAX_SEARCH_RADIUS)
 
             # Find all nodes within our rewire distance
-            near_nodes = [node for node in nodes if euclid(node.loc, new_node.loc) < radius]
+            near_nodes = [node for node in nodes if (node.loc[0] - new_node.loc[0])**2 + (node.loc[1] - new_node.loc[1]) < radius**2]
 
             # For every node within the radius
             for node in near_nodes:
@@ -740,7 +761,7 @@ class Map():
                 if node.loc != new_node.loc:
 
                     # Generate a dubins path between these nodes
-                    path = dubins.shortest_path(node.loc, new_node.loc, TURN_RADIUS)
+                    path = dubins.shortest_path(node.loc, new_node.loc, max(MEAN_TURN * np.random.normal(loc=1.0), MIN_TURN))
                     configurations, _ = path.sample_many(SAMPLE_SIZE)
                     
                     # No collisions along the new path
@@ -759,20 +780,27 @@ class Map():
             path = []
 
             while node is not None:
-                path = node.path + path
+                cur_path = []
+                for point in node.path:
+                    point_m = self.pixel_to_xy(int(point[0]), int(point[1]))
+                    cur_path.append((point_m[0], point_m[1], point[2]))
+
+                path = cur_path + path
                 node = node.parent
 
             return path
 
         ### END OF HELPER FUNCTIONS ###
 
+        # Convert start and goal to the grid
+        start = self.xyt_to_pixel(start[0], start[1], start[2])
+        goal = self.xyt_to_pixel(goal[0], goal[1], goal[2])
+
         # Add start to the tree
         nodes = [Node([start], start)]
 
         # For the maximum number of samples
-        samples = 0
         for _ in range(MAX_SAMPLES):
-            samples += 1
 
             # Pick a random grid cell or sample goal with set probability
             if random.random() > 0.15:
@@ -781,23 +809,23 @@ class Map():
                 while True:
                     target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
 
-                    if self.is_free(target[0], target[1]) :
+                    if self.one_grid[target[1] * self._width + target[0]] == 0:
                         break
 
-                target = self.pixel_to_xy(target[0], target[1])
+                #target = self.pixel_to_xy(target[0], target[1])
                 target = (target[0], target[1], random.uniform(-math.pi, math.pi))
             else:
                 target = goal
 
             # Find the nearest node in the list by euclid distance
-            nearest_node = min(nodes, key=lambda node: euclid(node.loc, target))
+            nearest_node = min(nodes, key=lambda node: (node.loc[0] - target[0])**2 + (node.loc[1] - target[1])**2)
 
             # Extend the target to the nearest node
             nearest_path, target = steer(nearest_node.loc, target)
 
             # If the extended path has no collisions
             if collision_free(nearest_path):
-            
+
                 # Add the newest node to the list
                 newest_node = Node(nearest_path, target, parent=nearest_node)
                 newest_node.cost += len(nearest_path) * SAMPLE_SIZE
@@ -806,20 +834,22 @@ class Map():
                 # Rewire the tree as necessary
                 rewire(nodes, newest_node)
 
-                # If close enough to the goal, return
-                if euclid(newest_node.loc, goal) <= GOAL_THRESH:        
+                # If close enough to the goal, return    
+                if (newest_node.loc[0] - goal[0])**2 + (newest_node.loc[1] - goal[1])**2 <= GOAL_THRESH:           
 
                     # all_nodes = []
                     # for n in nodes:
-                    #     paths.append(n.loc)
+                    #     point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
+                    #     all_nodes.append((point_m[0], point_m[1]))
 
-                    return path_to(newest_node)
+                    return path_to(newest_node), None
 
-        # all_nodes = []
-        # for n in nodes:
-        #     all_nodes.append(n.loc)
+        all_nodes = []
+        for n in nodes:
+            point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
+            all_nodes.append((point_m[0], point_m[1]))
 
-        return None
+        return None, all_nodes
 
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point

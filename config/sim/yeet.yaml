@@ -4,6 +4,7 @@ trajectory_planner:
     map_topic: "/map"
     scan_topic: "/scan"
     initial_pose_topic: "/initialpose"
+    clicked_point_topic: "/clicked_point"
 yeet:
   ros__parameters:
     odom_topic: "/pf/pose/odom"
