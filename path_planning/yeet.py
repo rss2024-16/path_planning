@@ -171,6 +171,8 @@ class PurePursuit(Node):
         if distance_to_goal < 0.25: 
             self.get_logger().info("close enough to goal")
             return True, None, None, None, None
+        
+        self.publish_marker_array(self.relative_point_pub, np.array([closest_point]), R, self.current_pose, rgb=[1.0, 0.0, 0.0])
         return closest_point, index, distance_to_goal, closest_intersect_distance, closest_point_intersect
     
 
@@ -326,8 +328,8 @@ class PurePursuit(Node):
                     self.publish_circle_marker(self.current_pose, self.lookahead)
                     turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
                     
-                    OFFSET = -0.05
-                    turning_angle += OFFSET
+                    # OFFSET = -0.05
+                    # turning_angle += OFFSET
                     if abs(turning_angle) > self.MAX_TURN:
                         turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
                     
