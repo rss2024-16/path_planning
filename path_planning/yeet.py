@@ -273,9 +273,9 @@ class PurePursuit(Node):
                     self.speed = self.MIN_SPEED
 
                 # self.get_logger().info(f'intersect dist: {intersect_distance}')
-                self.lookahead = intersect_distance if intersect_distance is not None and\
-                                intersect_distance < self.speed else self.speed*.5
-
+                # self.lookahead = intersect_distance if intersect_distance is not None and\
+                #                 intersect_distance < self.speed else self.speed*.5
+                self.lookahead = self.speed*.5
                 # self.lookahead = 1.0
                 # self.lookahead = self.speed/2
                 # self.lookahead = 3.0
@@ -296,7 +296,9 @@ class PurePursuit(Node):
 
                 success = False
                 i = index
-                if i == len(relative_points) - 2:
+                if i == 0:
+                    success,intersect = (True, relative_points[0])
+                elif i == len(relative_points) - 1:
                     success,intersect = (True,relative_points[-1])
                 else:
                     while not success and i < len(relative_points) - 1:
@@ -304,10 +306,11 @@ class PurePursuit(Node):
                         segment_end = relative_points[i + 1]
                         segment = (segment_start, segment_end)
                         success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
-                        # if not success and i > 0:
-                        #     segment_start = relative_points[i - 1]
-                        #     segment_end = relative_points[i]
-                        #     success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
+                        if not success and i > 0:
+                            segment_start = relative_points[i - 1]
+                            segment_end = relative_points[i]
+                            success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
+
                     
                         #so this only works if both parts of the intersections are in FOV
                         i += 1
@@ -393,19 +396,19 @@ class PurePursuit(Node):
         self.get_intersections()
         self.goal = self.points[-1]
 
-        # markers = []
-        # count = 0
-        # for p in self.points:
+        markers = []
+        count = 0
+        for p in self.points:
             
-        #     marker = self.to_marker(p,count)
+            marker = self.to_marker(p,count)
 
-        #     markers.append(marker)
-        #     count+=1
+            markers.append(marker)
+            count+=1
 
-        # markerarray = MarkerArray()
-        # markerarray.markers = markers
+        markerarray = MarkerArray()
+        markerarray.markers = markers
 
-        # self.pointpub.publish(markerarray)
+        self.pointpub.publish(markerarray)
 
         self.trajectory.clear()
         self.trajectory.fromPoseArray(msg)
