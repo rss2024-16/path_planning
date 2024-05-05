@@ -14,6 +14,8 @@ from tf_transformations import euler_from_quaternion
 
 from skimage.morphology import dilation,erosion
 from skimage.morphology import square,disk
+from skimage.morphology import dilation,erosion
+from skimage.morphology import square,disk
 
 import dubins
 
@@ -856,7 +858,7 @@ class Map():
         neighbors = []
 
         # radius = 8
-        step = 0.5
+        step = 1.0
         possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
         for (dx, dy) in possibilities:
             u, v = self.xy_to_pixel(x + dx, y + dy)
