@@ -54,7 +54,7 @@ class PurePursuit(Node):
         self.MAX_SPEED = 4.0
 
         self.MAX_LOOKAHEAD = 3.0
-        self.MIN_LOOKAHEAD = 0.75
+        self.MIN_LOOKAHEAD = 0.5
 
         self.MAX_TURN = 0.34
 
@@ -92,6 +92,7 @@ class PurePursuit(Node):
         self.current_pose = None
         self.intersections = None
         self.turning_markers = []
+        self.goal = None
 
 
         self.errors = []
@@ -167,9 +168,11 @@ class PurePursuit(Node):
         if closest_point is None:
             # self.get_logger().info("no points in front of car")
             return True, None, None, None, None
-        if distance_to_goal < 0.05: 
+        if distance_to_goal < 0.25: 
             self.get_logger().info("close enough to goal")
             return True, None, None, None, None
+        
+        self.publish_marker_array(self.relative_point_pub, np.array([closest_point]), R, self.current_pose, rgb=[1.0, 0.0, 0.0])
         return closest_point, index, distance_to_goal, closest_intersect_distance, closest_point_intersect
     
 
@@ -264,7 +267,7 @@ class PurePursuit(Node):
                     self.turning_points.publish(markerarray)
                 # self.get_logger().info(f'slope: {slope}')
 
-                self.speed = 4.0 * np.exp(-abs(slope))
+                self.speed = 4.0 * np.exp(-.9*abs(slope))
                 # dist = np.linalg(closest_point_intersect[0], closest_point_intersect[1])
                 # self.speed = min(max(dist, 2.0), 5.0)
 
@@ -273,7 +276,7 @@ class PurePursuit(Node):
 
                 # self.get_logger().info(f'intersect dist: {intersect_distance}')
                 self.lookahead = intersect_distance if intersect_distance is not None and\
-                                intersect_distance < self.speed else self.speed
+                                intersect_distance < self.speed else self.speed*.5
 
                 # self.lookahead = 1.0
                 # self.lookahead = self.speed/2
@@ -322,8 +325,8 @@ class PurePursuit(Node):
                     self.publish_circle_marker(self.current_pose, self.lookahead)
                     turning_angle = np.arctan2(2 * self.wheelbase_length * intersect[1], self.lookahead**2)
                     
-                    OFFSET = -0.05
-                    turning_angle += OFFSET
+                    # OFFSET = -0.05
+                    # turning_angle += OFFSET
                     if abs(turning_angle) > self.MAX_TURN:
                         turning_angle = self.MAX_TURN if turning_angle > 0 else -self.MAX_TURN
                     
@@ -390,6 +393,7 @@ class PurePursuit(Node):
 
         self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses]) #no theta 
         self.get_intersections()
+        self.goal = self.points[-1]
 
         # markers = []
         # count = 0
