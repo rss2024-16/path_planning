@@ -10,18 +10,17 @@ import json
 import random
 import math
 
-from tf_transformations import euler_from_quaternion
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 
-# from skimage.morphology import dilation,erosion
-# from skimage.morphology import square,disk
+from skimage.morphology import dilation,erosion
+from skimage.morphology import square,disk
 
 import dubins
+import rsplan as rs
 
 import heapq
 from collections import deque
-# # import cv2
-
-# import dubins
+import cv2
 
 EPSILON = 0.00000000001
 
@@ -117,7 +116,21 @@ class LineTrajectory:
         self.mark_dirty()
 
     def updatePoints(self, points) -> None:
-        self.points = points[:]
+        #self.points = points[:]
+        if len(points[0]) == 3:
+            for p in points:
+                if p not in self.points:
+                    self.points.append(p)
+        else:
+            for i in range(len(points) - 1):
+                if i == len(points):
+                    self.points.append((points[i][0], points[i][1], 0.0))
+                else:
+                    x0 = points[i][0]
+                    y0 = points[i][1]
+                    x1 = points[i + 1][0]
+                    y1 = points[i + 1][1]
+                    self.points.append((x0, y0, np.arctan2((y1 - y0), (x1 - x0))))
         self.reset_distances()
         self.mark_dirty()
 
@@ -160,8 +173,20 @@ class LineTrajectory:
 
     # build a trajectory class instance from a trajectory message
     def fromPoseArray(self, trajMsg):
-        for p in trajMsg.poses:
-            self.points.append((p.position.x, p.position.y))
+        if trajMsg.poses[0].orientation.w != 0:        
+            for p in trajMsg.poses:
+                self.points.append((
+                    p.position.x, 
+                    p.position.y, 
+                    euler_from_quaternion((
+                        p.orientation.x,
+                        p.orientation.y,
+                        p.orientation.z,
+                        p.orientation.w))[2]
+                    ))
+        else:
+            for p in trajMsg.poses:
+                self.points.append((p.position.x, p.position.y))
         self.update_distances()
         self.mark_dirty()
         print("Loaded new trajectory with:", len(self.points), "points")
@@ -169,12 +194,26 @@ class LineTrajectory:
     def toPoseArray(self):
         traj = PoseArray()
         traj.header = self.make_header("/map")
-        for i in range(len(self.points)):
-            p = self.points[i]
-            pose = Pose()
-            pose.position.x = p[0]
-            pose.position.y = p[1]
-            traj.poses.append(pose)
+
+        if len(self.points[0]) == 3:
+            for i in range(len(self.points)):
+                p = self.points[i]
+                q = quaternion_from_euler(0, 0, p[2])
+                pose = Pose()
+                pose.position.x = p[0]
+                pose.position.y = p[1]
+                pose.orientation.x = q[0]
+                pose.orientation.y = q[1]
+                pose.orientation.z = q[2]
+                pose.orientation.w = q[3]
+                traj.poses.append(pose)
+        else:
+            for i in range(len(self.points)):
+                p = self.points[i]
+                pose = Pose()
+                pose.position.x = p[0]
+                pose.position.y = p[1]
+                traj.poses.append(pose)
         return traj
 
     def publish_start_point(self, duration=0.0, scale=0.1):
@@ -351,7 +390,7 @@ class Map():
     Occupancy Grid gives information about the location of obstacles
     grid.data lists the occupancy values of map cells: 100 = occupied, 0 = free, -1 = unknown
     """
-    def __init__(self, occupany_grid) -> None:
+    def __init__(self, occupany_grid, lane_traj=None) -> None:
         self._height = occupany_grid.info.height
         self._width = occupany_grid.info.width
 
@@ -367,25 +406,52 @@ class Map():
                                              [np.sin(theta), np.cos(theta), 0],
                                              [0, 0, 1]
                                             ])
-        
-        #2d (int) array of pixel coords indexed by grid[v][u] 
-
-        #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-
-        # self.grid = dilation(self.grid,square(10))
-        #cv2.imwrite('test2.png',self.grid)
-        # grid = cv2.imread('test.png', cv2.IMREAD_GRAYSCALE)
-        # cv2.imwrite('test3.png', grid)
-        self.grid = np.load('grid.npy')
-        self.one_grid = self.grid.flatten()
-
-        #here we are dilating the map in order to avoid cutting corners
-        # self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        # self.grid = erosion(self.grid, disk(8))
-        # np.save('grid.npy',self.grid)
-        # cv2.imwrite('test.png',self.grid)
 
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
+        
+        #2d (int) array of pixel coords indexed by grid[v][u] 
+        #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = np.load('grid.npy')
+
+        #here we are dilating the map in order to avoid cutting corners
+        #self.grid = erosion(self.grid, disk(9))
+        # self.grid = dilation(self.grid, disk(6))
+
+        # lane = lane_traj.points
+        # for i in range(len(lane) - 1):
+        #     begin = self.xy_to_pixel(lane[i][0], lane[i][1])
+        #     end = self.xy_to_pixel(lane[i + 1][0], lane[i + 1][1])
+
+        #     dy = end[1] - begin[1]
+        #     dx = end[0] - begin[0]
+
+        #     if abs(dy) < abs(dx):
+        #         slope = dy / dx 
+
+        #         step = 1 if begin[0] < end[0] else -1
+
+        #         self.grid[end[1]][end[0]] = 100
+
+        #         stepped = (end[0] - step, end[1] - slope * step)
+        #         while (stepped[0] > begin[0] and begin[0] < end[0]) or (stepped[0] < begin[0] and begin[0] > end[0]):
+        #             self.grid[int(stepped[1])][int(stepped[0])] = 100
+        #             stepped = (stepped[0] - step, stepped[1] - slope * step)
+        #     else:
+        #         slope = dx / dy
+
+        #         step = 1 if begin[1] < end[1] else -1
+        #         self.grid[end[1]][end[0]] = 100
+
+        #         stepped = (end[0] - slope * step, end[1] - step)
+        #         while (stepped[0] > begin[0] and begin[0] < end[0]) or (stepped[0] < begin[0] and begin[0] > end[0]):
+        #             self.grid[int(stepped[1])][int(stepped[0])] = 100
+        #             stepped = (stepped[0] - slope * step, stepped[1] - step)
+
+        # np.save('grid_w_lane.npy',self.grid)
+        # cv2.imwrite('test.png',self.grid)
+
+        # RRT stuff
+        self.one_grid = self.grid.flatten()
 
         # Crazy RRT ball shit
         v_unit_ball = 4/3 * math.pi
@@ -395,6 +461,7 @@ class Map():
         v_cell = A * math.pi
 
         num_free_cells = np.count_nonzero(self.grid == 0)
+        print(num_free_cells)
         v_free = v_cell * num_free_cells
 
         self.gamma_estimate = (2**3) * (1 + 1/3) * (v_free / v_unit_ball)
@@ -430,7 +497,7 @@ class Map():
 
     def xyt_to_pixel(self, x: float, y: float, theta: float) -> Tuple[int, int, float]:
         """
-        Converts x,y,theta point in map frame to u,v pixel in occupancy grid
+        Converts x,y,theta point in map frame to u,v,theta pixel in occupancy grid
         """
         q = np.array([[x], [y], [0]]) #3x1 x,y,z
 
@@ -462,7 +529,25 @@ class Map():
 
         x, y = q[:2, :]
 
-        return (x[0], y[0])
+        return (x[0], y[0], )
+    
+    def pixel_to_xyt(self, u: int, v: int, theta: float) -> Tuple[float, float, float]:
+        """
+        Converts u,v,theta pixel to x,y,theta point in map frame
+        """
+        pixel = np.array([[u], [v], [0]])
+
+        pixel = pixel * self._resolution 
+
+        _, _, yaw = euler_from_quaternion(self.origin_o)
+
+        q = np.matmul(self.R_z(yaw),pixel)
+
+        q = q + self.origin_p
+
+        x, y = q[:2, :]
+
+        return (x[0], y[0], theta - yaw)
     
     def is_free(self, u, v) -> bool:
         return self.grid[v][u] == 0
@@ -702,12 +787,12 @@ class Map():
 
         # Constants
         M_TO_PIX = 1 / self._resolution     # Converts meters (x, y) to pixels (u, v)
-        GOAL_THRESH = (1 * M_TO_PIX)**2     # Distance to goal for termination
-        MIN_TURN = 0.4 * M_TO_PIX           # Minimum turn radius determined by car
+        GOAL_THRESH = (0.5 * M_TO_PIX)**2   # Distance to goal for termination
+        MIN_TURN = 0.4 * M_TO_PIX           # Minimum turn radius (determined by car)
 
         # Parameters
         MAX_LENGTH = 1 * M_TO_PIX           # Max segment length
-        MEAN_TURN = 1 * M_TO_PIX            # Average turn radius (gaussian)
+        MEAN_TURN = 1.5 * M_TO_PIX          # Average turn radius (gaussian)
         MAX_SEARCH_RADIUS = 5 * M_TO_PIX    # Maximum distance to rewire nodes
         SAMPLE_SIZE = 0.25 * M_TO_PIX       # How often Dubins are sampled
         MAX_SAMPLES = 20000                 # Num of samples before termination
@@ -740,7 +825,7 @@ class Map():
                 return False
 
             # Check every point along the path and return false if collision
-            for point in path:
+            for point in reversed(path):
                 if not self.one_grid[int(point[1]) * self._width + int(point[0])] == 0:
                     return False
             
@@ -781,8 +866,8 @@ class Map():
             while node is not None:
                 cur_path = []
                 for point in node.path:
-                    point_m = self.pixel_to_xy(int(point[0]), int(point[1]))
-                    cur_path.append((point_m[0], point_m[1], point[2]))
+                    point_m = self.pixel_to_xyt(int(point[0]), int(point[1]), point[2])
+                    cur_path.append(point_m)
 
                 path = cur_path + path
                 node = node.parent
@@ -802,17 +887,11 @@ class Map():
         for _ in range(MAX_SAMPLES):
 
             # Pick a random grid cell or sample goal with set probability
-            if random.random() > 0.15:
+            if random.random() > 0.1:
 
-                # Sample until you get a free point
-                while True:
-                    target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
-
-                    if self.one_grid[target[1] * self._width + target[0]] == 0:
-                        break
-
-                #target = self.pixel_to_xy(target[0], target[1])
-                target = (target[0], target[1], random.uniform(-math.pi, math.pi))
+                # Sample a random point
+                target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
+                target = (target[0], target[1], random.uniform(0, 2 * math.pi))
             else:
                 target = goal
 
@@ -835,6 +914,157 @@ class Map():
 
                 # If close enough to the goal, return    
                 if (newest_node.loc[0] - goal[0])**2 + (newest_node.loc[1] - goal[1])**2 <= GOAL_THRESH:           
+
+                    # all_nodes = []
+                    # for n in nodes:
+                    #     point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
+                    #     all_nodes.append((point_m[0], point_m[1]))
+
+                    return path_to(newest_node), None
+
+        all_nodes = []
+        for n in nodes:
+            point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
+            all_nodes.append((point_m[0], point_m[1]))
+
+        return None, all_nodes
+
+    def rrt_star_reverse(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
+
+        # Constants
+        M_TO_PIX = 1 / self._resolution     # Converts meters (x, y) to pixels (u, v)
+        GOAL_THRESH = (0.75 * M_TO_PIX)**2  # Distance to goal for termination
+        ANGLE_THRESH = 0.174533             # How close the final angle must be to goal
+        MIN_TURN = 0.4 * M_TO_PIX           # Minimum turn radius (determined by car)
+
+        # Parameters
+        MAX_LENGTH = 3 * M_TO_PIX           # Max segment length
+        MEAN_TURN = 1.5 * M_TO_PIX          # Average turn radius (gaussian)
+        MAX_SEARCH_RADIUS = 3 * M_TO_PIX    # Maximum distance to rewire nodes
+        SAMPLE_SIZE = 0.2 * M_TO_PIX        # How often Dubins are sampled
+        MAX_SAMPLES = 20000                 # Num of samples before termination
+
+        class Node():
+            def __init__(self, path, loc, parent=None):
+                self.path = path
+                self.loc = loc
+                self.parent = parent
+                self.cost = 0.0 if parent is None else parent.cost
+
+        def steer(begin, end):
+
+            # Generate the reeds-shepp path between the points
+            path = rs.path(
+                begin, end, max(MEAN_TURN * np.random.normal(loc=1.0), MIN_TURN), 0, SAMPLE_SIZE
+            )
+            configurations = path.waypoints()
+
+            # Interpolate the end point if required
+            if len(configurations) * SAMPLE_SIZE > MAX_LENGTH:
+                configurations = configurations[:int(MAX_LENGTH / SAMPLE_SIZE)]
+                end = configurations[-1]
+
+            return configurations, end
+
+        def collision_free(path):
+
+            # Broad phase detection check middle point
+            point = path[len(path) // 2]
+            if not self.one_grid[int(point[1]) * self._width + int(point[0])] == 0:
+                return False
+
+            # Check every point along the path and return false if collision
+            for point in reversed(path):
+                if not self.one_grid[int(point[1]) * self._width + int(point[0])] == 0:
+                    return False
+            
+            return True
+
+        def rewire(nodes, new_node):
+            n = len(nodes)
+            radius = min((self.gamma_estimate * np.log10(n) / n)**(1/3), MAX_SEARCH_RADIUS)
+
+            # Find all nodes within our rewire distance
+            near_nodes = [node for node in nodes if (node.loc[0] - new_node.loc[0])**2 + (node.loc[1] - new_node.loc[1]) < radius**2]
+
+            # For every node within the radius
+            for node in near_nodes:
+
+                # Ignore our new node
+                if node.loc != new_node.loc:
+
+                    # Generate the reeds-shepp path between the points
+                    path = rs.path(
+                        node.loc, new_node.loc, max(MEAN_TURN * np.random.normal(loc=1.0), MIN_TURN), 0, SAMPLE_SIZE
+                    )
+                    configurations = path.waypoints()
+                    
+                    # No collisions along the new path
+                    if collision_free(configurations):
+
+                        # Find the cost for this node
+                        new_cost = node.cost + len(configurations) * SAMPLE_SIZE
+
+                        # If this node cost is better than the old cost
+                        if new_cost < new_node.cost:
+                            new_node.parent = node
+                            new_node.path = configurations
+                            new_node.cost = new_cost
+
+        def path_to(node):
+            path = []
+
+            while node is not None:
+                cur_path = []
+                for point in node.path:
+                    point_m = self.pixel_to_xyt(int(point[0]), int(point[1]), point[2])
+                    cur_path.append(point_m)
+
+                path = cur_path + path
+                node = node.parent
+
+            return path
+
+        ### END OF HELPER FUNCTIONS ###
+
+        # Convert start and goal to the grid
+        start = self.xyt_to_pixel(start[0], start[1], start[2])
+        goal = self.xyt_to_pixel(goal[0], goal[1], goal[2])
+
+        # Add start to the tree
+        nodes = [Node([start], start)]
+
+        # For the maximum number of samples
+        for _ in range(MAX_SAMPLES):
+
+            # Pick a random grid cell or sample goal with set probability
+            if random.random() > 0.1:
+
+                # Sample a random point
+                target = (random.randint(0, self.width - 1), random.randint(0, self.height - 1))
+                target = (target[0], target[1], random.uniform(0, 2 * math.pi))
+            else:
+                target = goal
+
+            # Find the nearest node in the list by euclid distance
+            nearest_node = min(nodes, key=lambda node: (node.loc[0] - target[0])**2 + (node.loc[1] - target[1])**2)
+
+            # Extend the target to the nearest node
+            nearest_path, target = steer(nearest_node.loc, target)
+
+            # If the extended path has no collisions
+            if collision_free(nearest_path):
+
+                # Add the newest node to the list
+                newest_node = Node(nearest_path, target, parent=nearest_node)
+                newest_node.cost += len(nearest_path) * SAMPLE_SIZE
+                nodes.append(newest_node)
+
+                # Rewire the tree as necessary
+                rewire(nodes, newest_node)
+
+                # If close enough to the goal, return    
+                if (newest_node.loc[0] - goal[0])**2 + (newest_node.loc[1] - goal[1])**2 <= GOAL_THRESH and abs(newest_node.loc[2] - goal[2]) <= ANGLE_THRESH:           
 
                     # all_nodes = []
                     # for n in nodes:

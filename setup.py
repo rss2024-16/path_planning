@@ -33,7 +33,8 @@ setup(
             'trajectory_loader = path_planning.trajectory_loader:main',
             'trajectory_planner = path_planning.trajectory_planner:main',
             'trajectory_follower = path_planning.trajectory_follower:main',
-            'yeet = path_planning.yeet:main'
+            'yeet = path_planning.yeet:main',
+            'stanley_controller = path_planning.stanley_controller:main'
         ],
     },
 )

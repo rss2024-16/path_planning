@@ -7,6 +7,8 @@ from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory, Map
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from visualization_msgs.msg import Marker, MarkerArray
+import time
+import numpy as np
 # import cProfile
 
 class PathPlan(Node):
@@ -59,12 +61,18 @@ class PathPlan(Node):
         self.s = None
         self.t = None
 
+        self.get_logger().info("initialized")
+
     def map_cb(self, msg):
         #height x width -> 1300 x 1730 = 2,249,000
         #msg.data len -> 2,249,000
         #msg.data vals -> -1, 0, or 100 (0 means free space)
         self.get_logger().info("starting")
-        self.occ_map = Map(msg)
+
+        lane_traj = LineTrajectory(self, "/loaded_trajectory")
+        lane_traj.load("/home/racecar/racecar_ws/src/path_planning/example_trajectories/full-lane.traj")
+
+        self.occ_map = Map(msg, lane_traj)
 
     def pose_cb(self, pose):
         """
@@ -94,6 +102,7 @@ class PathPlan(Node):
         msg.pose.orientation.z,
         msg.pose.orientation.w))
         self.t_theta = orientation[2]
+        self.get_logger().info(f"x: {self.t.x} y: {self.t.y} t: {self.t_theta}")
         if self.s is not None: 
             self.get_logger().info(f'Finding trajectory...')
             self.plan_path()
@@ -103,10 +112,9 @@ class PathPlan(Node):
         start_point s: Ros2 Point
         end_point t: Ros2 Point
         """
-        self.trajectory.clear()
 
-        ALG = "rrt_star"
-        search_dict = {"bfs": self.occ_map.bfs, "rrt": self.occ_map.rrt, "rrt_star": self.occ_map.rrt_star, "astar": self.occ_map.astar}
+        ALG = "bfs"
+        search_dict = {"bfs": self.occ_map.bfs, "rrt": self.occ_map.rrt, "rrt_star": self.occ_map.rrt_star, "rrt_star_reverse": self.occ_map.rrt_star_reverse, "astar": self.occ_map.astar}
         
         if ALG in ['bfs', 'astar', 'rrt']:
             s = (self.s.x, self.s.y)
@@ -115,7 +123,23 @@ class PathPlan(Node):
             s = (self.s.x, self.s.y, self.s_theta)
             t = (self.t.x, self.t.y, self.t_theta)
 
-        nodes = None
+
+        # TEST 1 OPP ENDS (3 turns/tight spots)
+        #s = (-57.2, -0.6, -0.0396)
+        #t = (-4.0, 23.83, 0.8166)
+
+        # # TEST 2 STRAIGHT AWAY (1 turn)
+        #s = (-14.99, -1.07, 3.105)
+        #t = (-55.118, 18.435, 1.53)
+
+        # # TEST 3 FULL LOOP (4 turns)
+        #s = (-14.14, 25.2669, -3.135)
+        #t = (-25.526, -0.6237, -0.0716)
+
+        # # TEST 4 CORNERS (2 turns)
+        #s = (-14.14, 25.2669, -3.135)
+        #t = (-32.041, 33.817, -3.078)
+
 
         # profiler = cProfile.Profile()
         # profiler.enable()
@@ -124,41 +148,52 @@ class PathPlan(Node):
         # profiler.disable()
         # profiler.print_stats(sort='time')
 
-        #path = self.occ_map.rrt(s, t)
+        times = []
+        lengths = []
 
-        # path = self.occ_map.astar(s, t)
-        #path = self.occ_map.prune_path(path)
+        for i in range(1):
+            self.trajectory.clear()
+
+            nodes = None
+
+            t1 = time.time()
+            path = search_dict[ALG](s, t) #path start -> goal in tuples of x,y point nodes (float, float)
+            t2 = time.time()
+            times.append(t2 - t1)
+
+            if isinstance(path, tuple):
+                nodes = path[1]
+                path = path[0]
+
+            if path is None or len(path) == 0: 
+                self.get_logger().info("No path found!")
+
+            if nodes is not None:
+                x = []
+                y = []
+                for point in nodes:
+                    x.append(point[0])
+                    y.append(point[1])
+
+                self.get_logger().info("points generated")
+
+                self.publish_marker_array(self.tree_pub, x, y)
         
+            if path is not None:
+                self.trajectory.updatePoints(path)
 
-        # path = self.occ_map.rrt(s, t)
-        path = search_dict[ALG](s, t) #path start -> goal in tuples of x,y point nodes (float, float)
-        if isinstance(path, tuple):
-            nodes = path[1]
-            path = path[0]
+                lengths.append(self.trajectory.distances[-1])
 
-        if len(path) == 0 or path is None: 
-            self.get_logger().info("No path found!")
-            return
+            self.traj_pub.publish(self.trajectory.toPoseArray())
+            self.trajectory.publish_viz()
 
-        # path = self.occ_map.prune_path(path)
+        times = np.array(times)
+        lengths = np.array(lengths)
 
-        if nodes is not None:
-            x = []
-            y = []
-            # for path in paths:
-            for point in nodes:
-                x.append(point[0])
-                y.append(point[1])
-
-            self.get_logger().info("points generated")
-
-            self.publish_marker_array(self.tree_pub, x, y)
-        
-        if path is not None:
-            self.trajectory.updatePoints(path)
-
-        self.traj_pub.publish(self.trajectory.toPoseArray())
-        self.trajectory.publish_viz()
+        # self.get_logger().info(f"Avg time: {np.mean(times)}, Max time: {np.max(times)}")
+        # self.get_logger().info(f"Avg legth: {np.mean(lengths)}, Max legth: {np.max(lengths)}")
+        self.get_logger().info(f"Times: {times}")
+        self.get_logger().info(f"Lengths: {lengths}")
 
     def publish_marker_array(self, publisher, xa, ya, rgb=[1.0,0.0,0.0]):
         """
