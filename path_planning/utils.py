@@ -411,7 +411,8 @@ class Map():
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
         #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        self.grid = np.load('grid.npy')
+        #self.grid = np.load('grid.npy')
+        self.grid = np.load('grid_w_lane.npy')
 
         #here we are dilating the map in order to avoid cutting corners
         #self.grid = erosion(self.grid, disk(9))
@@ -719,7 +720,7 @@ class Map():
                 path.append(stepped)
                 stepped = (stepped[0] - step, stepped[1] - slope * step)
 
-            return path, end
+            return path
 
         def collision_free(path):
             for point in path:
@@ -920,14 +921,14 @@ class Map():
                     #     point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
                     #     all_nodes.append((point_m[0], point_m[1]))
 
-                    return path_to(newest_node), None
+                    return path_to(newest_node)
 
         all_nodes = []
         for n in nodes:
             point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
             all_nodes.append((point_m[0], point_m[1]))
 
-        return None, all_nodes
+        return None
 
     def rrt_star_reverse(self, start: Tuple[float, float, float], goal: Tuple[float, float, float]):
 
@@ -1071,21 +1072,21 @@ class Map():
                     #     point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
                     #     all_nodes.append((point_m[0], point_m[1]))
 
-                    return path_to(newest_node), None
+                    return path_to(newest_node)
 
         all_nodes = []
         for n in nodes:
             point_m = self.pixel_to_xy(int(n.loc[0]), int(n.loc[1]))
             all_nodes.append((point_m[0], point_m[1]))
 
-        return None, all_nodes
+        return None
 
     def get_neighbors(self, point: Tuple[float, float]) -> List[Tuple[float, float]]:
         x, y = point
         neighbors = []
 
         # radius = 8
-        step = 0.5
+        step = 1.0
         possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
         for (dx, dy) in possibilities:
             u, v = self.xy_to_pixel(x + dx, y + dy)
