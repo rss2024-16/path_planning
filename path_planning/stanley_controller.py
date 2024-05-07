@@ -135,15 +135,13 @@ class StanleyController(Node):
             # Normalize the angle to be between 0 and 2pi
             angle_to_point = (angle_to_point + np.pi) % (2 * np.pi)
             
-            # Check if the point is in front of the car
-            if True or 0 <= angle_to_point <= np.pi / 2:
-                # Calculate the euclidean distance from the car's position to the point
-                dist = np.linalg.norm(np.array([dx, dy]))
-                
-                # Update the minimum distance and nearest point
-                if dist < min_distance:
-                    min_distance = dist
-                    nearest_index = i
+            # Calculate the euclidean distance from the car's position to the point
+            dist = np.linalg.norm(np.array([dx, dy]))
+            
+            # Update the minimum distance and nearest point
+            if dist < min_distance:
+                min_distance = dist
+                nearest_index = i
         
         return nearest_index
 

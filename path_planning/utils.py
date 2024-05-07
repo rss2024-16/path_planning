@@ -117,6 +117,7 @@ class LineTrajectory:
 
     def updatePoints(self, points) -> None:
         #self.points = points[:]
+        self.points = []
         if len(points[0]) == 3:
             for p in points:
                 if p not in self.points:
@@ -124,7 +125,7 @@ class LineTrajectory:
         else:
             for i in range(len(points) - 1):
                 if i == len(points):
-                    self.points.append((points[i][0], points[i][1], 0.0))
+                    self.points.append((points[i][0], points[i][1], self.points[i - 1][2]))
                 else:
                     x0 = points[i][0]
                     y0 = points[i][1]
@@ -418,7 +419,84 @@ class Map():
         #self.grid = erosion(self.grid, disk(9))
         # self.grid = dilation(self.grid, disk(6))
 
-        # lane = lane_traj.points
+        #### CODE FOR GENERATING OFFSET LANE TRAJECTORIES
+
+        # lane_traj.updatePoints(lane_traj.points[:])
+        # shifted_points = []
+        # shift_distance = 0.5
+        # sample_step = 0.5
+        # skip_next = False
+
+        # for i, (x, y, theta) in enumerate(lane_traj.points):
+        #     if i != len(lane_traj.points) - 1:
+        #         next_point = lane_traj.points[i + 1]
+        #         dx = x - next_point[0]
+        #         dy = y - next_point[1]
+        #         steps = np.linalg.norm(np.array([dx, dy])) / sample_step
+
+        #         difference = theta - lane_traj.points[i+1][2]
+        #         difference = difference % (2 * math.pi)
+        #         if difference > math.pi:
+        #             difference = 2 * math.pi - difference
+
+        #         if difference <= 1.2:
+        #             steps += 1
+
+        #         for j in range(int(steps)):  
+        #             if not skip_next:      
+                        
+        #                 x_int = x + (sample_step * j * np.cos(theta))
+        #                 y_int = y + (sample_step * j * np.sin(theta))
+
+        #                 dx = x_int - next_point[0]
+        #                 dy = y_int - next_point[1]
+        #                 length_left = np.linalg.norm(np.array([dx, dy]))
+
+
+        #                 if length_left <= shift_distance + 0.1 and difference > 0.7:
+        #                     break
+
+        #                 # Calculate the shift in x and y coordinates
+        #                 x_shift = shift_distance * np.cos(theta + np.pi/2)
+        #                 y_shift = shift_distance * np.sin(theta + np.pi/2)
+                        
+        #                 # Shift the point
+        #                 shifted_x = x_int + x_shift
+        #                 shifted_y = y_int + y_shift
+                        
+        #                 # Store the shifted point
+        #                 shifted_points.append((shifted_x, shifted_y, theta))
+
+        #             else:
+        #                 skip_next = False
+
+        #         if difference >= 1.2:
+        #             skip_next = True
+        #     else:
+        #         # Handle the last point without a next point to calculate dx, dy
+        #         # Calculate the shift in x and y coordinates
+        #         x_shift = shift_distance * np.sin(theta)
+        #         y_shift = shift_distance * np.cos(theta)
+                
+        #         # Shift the point
+        #         shifted_x = x + x_shift
+        #         shifted_y = y + y_shift
+                
+        #         # Store the shifted point
+        #         shifted_points.append((shifted_x, shifted_y, theta))
+
+
+        #     i += 1
+
+        # lane_traj.updatePoints(shifted_points[::-1])
+        # lane_traj.save('/home/racecar/racecar_ws/src/path_planning/example_trajectories/left-lane.traj')
+
+
+        #### END CODE FOR GENERATING OFFSET LANE TRAJECTORIES
+
+        #### CODE FOR ADDING THE CENTERLINE TO THE OCCUPANCY MAP
+
+
         # for i in range(len(lane) - 1):
         #     begin = self.xy_to_pixel(lane[i][0], lane[i][1])
         #     end = self.xy_to_pixel(lane[i + 1][0], lane[i + 1][1])
@@ -450,6 +528,8 @@ class Map():
 
         # np.save('grid_w_lane.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
+
+        #### END CODE FOR ADDING THE CENTERLINE TO THE OCCUPANCY MAP
 
         # RRT stuff
         self.one_grid = self.grid.flatten()

@@ -36,6 +36,8 @@ class PathPlan(Node):
             self.map_cb,
             1)
 
+        self.get_logger().info("initialized?")
+
         self.goal_sub = self.create_subscription(
             PoseStamped,
             "/goal_pose",
@@ -73,7 +75,6 @@ class PathPlan(Node):
         self.s = None
         self.t = None
 
-        self.get_logger().info("initialized")
 
     def map_cb(self, msg):
         #height x width -> 1300 x 1730 = 2,249,000
