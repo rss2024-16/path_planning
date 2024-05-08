@@ -134,15 +134,15 @@ class PathPlan(Node):
             self.get_logger().info(f'Finding trajectory for {len(self.points)} points...')
             count = 2
 
-            for idx in range(len(self.points)-1):
+            for idx in range(len(self.points)):
                 s = self.points[idx]
-                t = self.points[idx + 1]
+                t = self.points[(idx + 1)%len(self.points)]
                 if s[2] is None: #clicked point, so there will always be a point after
                     orientation = np.arctan2(t[1]-s[1], t[0]-s[0])
                     s[2] = orientation
                 
                 if t[2] is None:
-                    next_ = self.points[idx + 2]
+                    next_ = self.points[(idx + 2)%len(self.points)]
                     orientation = np.arctan2(next_[1]-t[1], next_[0]-t[1])
                     t[2] = orientation
             

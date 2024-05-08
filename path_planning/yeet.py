@@ -101,6 +101,8 @@ class PurePursuit(Node):
         self.speeds = []
         self.times = []
 
+        self.succeed = None
+
     def closest_intersect(self):
         '''
         Finds the closest point that is in front of the car
@@ -170,6 +172,7 @@ class PurePursuit(Node):
             return True, None, None, None, None
         if distance_to_goal < 0.25: 
             self.get_logger().info("close enough to goal")
+            self.succeed = True
             return True, None, None, None, None
         
         self.publish_marker_array(self.relative_point_pub, np.array([closest_point]), R, self.current_pose, rgb=[1.0, 0.0, 0.0])
