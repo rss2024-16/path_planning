@@ -8,16 +8,18 @@ from tf_transformations import euler_from_quaternion
 import numpy as np
 
 from .utils import LineTrajectory
+import time
 
 class StanleyController(Node):
 
     def __init__(self):
         super().__init__("trajectory_follower")
-        self.declare_parameter('odom_topic', "/odom")
-        self.declare_parameter('drive_topic', "/drive")
+        self.declare_parameter('odom_topic', "/pf/pose/odom")
+        self.declare_parameter('drive_topic', "/vesc/input/navigation")
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value        
+        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value  
+        self.get_logger().info(str(self.drive_topic))      
         
         self.trajectory = LineTrajectory("/followed_trajectory")
 
@@ -39,9 +41,20 @@ class StanleyController(Node):
                                                 [np.sin(theta),     np.cos(theta),  0],
                                                 [0,                 0,              1]])
 
-        self.k = 0.25          # Steering constant
-        self.v = 2.5        # Constant velocity for now
-        self.MAX_TURN = 0.33
+        self.k = 0.2            # Convergence time constant
+        self.k_soft = 1.0       # Low speed compensation
+        self.k_yaw = 0.0        # Turn dampening
+        self.k_steer = 0.0      # Time delay compensation
+        self.k_ag = 0.0         # Curvature offset
+        
+        self.v = 2.0
+        self.MAX_TURN = 0.2     # Real max turn is 0.34, but that is too much often
+        self.OFFSET = -0.04     # Constant offset because our robot sucks ass
+
+        self.prev_theta_track = 0.0
+        self.prev_theta = 0.0
+        self.prev_delta = 0.0
+        self.prev_t = time.time()
 
     def trajectory_callback(self, msg):
         """
@@ -70,7 +83,7 @@ class StanleyController(Node):
             odometry_msg.pose.pose.orientation.y,
             odometry_msg.pose.pose.orientation.z,
             odometry_msg.pose.pose.orientation.w))
-        theta = orientation[2]
+        theta = orientation[2]      
 
         # Current position in the world frame (why is odom in the world frame?)
         current_pose = np.array([x, y, theta])
@@ -95,7 +108,7 @@ class StanleyController(Node):
         cross_track = e_num / e_denom
 
         # Cross track steering correction
-        theta_xc = np.arctan(self.k * cross_track / self.v)
+        theta_xc = np.arctan2(self.k * cross_track, self.k_soft + self.v)
 
         # Direction of the trajectory (where we should be pointing)
         theta_track = prev_p[2]
@@ -104,13 +117,28 @@ class StanleyController(Node):
         psi = theta_track - theta
         psi = (psi + np.pi) % (2 * np.pi) - np.pi
 
+        # Yaw rates
+        r_traj = (theta_track - self.prev_theta_track) / (time.time() - self.prev_t)
+        r_meas = (theta - self.prev_theta) / (time.time() - self.prev_t)
+
+        # Yaw setpoint
+        psi_ss = self.k_ag * self.v * r_traj
+
         # Updated steering
-        delta = psi + theta_xc
+        delta = psi
+        delta += theta_xc
+        delta += self.k_yaw * (r_meas - r_traj)
+        delta += self.k_steer * (delta - self.prev_delta)
+
+        # Store rate values
+        self.prev_theta = theta
+        self.prev_theta_track = theta_track
+        self.prev_t = time.time()
 
         # Publish the drive command
         drive_cmd = AckermannDriveStamped()
         drive_cmd.drive.speed = self.v
-        drive_cmd.drive.steering_angle = np.clip(delta, -self.MAX_TURN, self.MAX_TURN)
+        drive_cmd.drive.steering_angle = np.clip(delta + self.OFFSET, -self.MAX_TURN, self.MAX_TURN)
         self.drive_pub.publish(drive_cmd)
 
     def find_next_index(self, position):
