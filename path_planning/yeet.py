@@ -108,6 +108,8 @@ class PurePursuit(YasminNode):
         self.get_logger().info(f'reset succeed') 
         self._succeed = None
 
+        self.succeed = None
+
     def closest_intersect(self):
         '''
         Finds the closest point that is in front of the car
