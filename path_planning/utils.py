@@ -15,8 +15,8 @@ from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from skimage.morphology import dilation,erosion
 from skimage.morphology import square,disk
 
-import dubins
-import rsplan as rs
+# import dubins
+# import rsplan as rs
 
 import heapq
 from collections import deque
@@ -412,8 +412,8 @@ class Map():
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
         #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
-        #self.grid = np.load('grid.npy')
-        self.grid = np.load('grid_w_lane.npy')
+        self.grid = np.load('grid.npy')
+        # self.grid = np.load('grid_w_lane.npy')
 
         #here we are dilating the map in order to avoid cutting corners
         #self.grid = erosion(self.grid, disk(9))
