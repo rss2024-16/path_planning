@@ -15,6 +15,8 @@ from .utils import LineTrajectory
 import math
 import time
 
+from yasmin_ros.yasmin_node import YasminNode
+
 """
 TODO:
 np argmin optimize for time
@@ -33,73 +35,78 @@ speed
 ros2 launch path_planning sim_yeet.launch.xml
 """
 
-class PurePursuit(Node):
+class PurePursuit(YasminNode):
     """ 
     Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
     """
 
     def __init__(self):
-        super().__init__("trajectory_follower")
+        super().__init__()
         self.declare_parameter('odom_topic', "default")
         self.declare_parameter('drive_topic', "default")
 
-        self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        # self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
+        # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        self.odom_topic = "/pf/pose/odom"
+        self.drive_topic = "/drive"
 
-        self.lookahead = 1.0  # FILL IN #
-        self.speed = 1.0  # FILL IN #
-        self.wheelbase_length = 0.3  # FILL IN #
-
-        self.MIN_SPEED = 1.6
-        self.MAX_SPEED = 4.0
-
-        self.MAX_LOOKAHEAD = 3.0
-        self.MIN_LOOKAHEAD = 0.5
-
-        self.MAX_TURN = 0.34
-
-        self.trajectory = LineTrajectory("/followed_trajectory")
-
-        self.traj_sub = self.create_subscription(PoseArray,
-                                                 "/trajectory/current",
-                                                 self.trajectory_callback,
-                                                 1)
-        self.drive_pub = self.create_publisher(AckermannDriveStamped,
-                                               self.drive_topic,
-                                               1)
-        
-        self.pose_sub = self.create_subscription(Odometry, self.odom_topic, self.pose_callback, 1)
-
-        self.transform = lambda theta: np.array([ [np.cos(theta), -np.sin(theta), 0],
-                                             [np.sin(theta), np.cos(theta), 0],
-                                             [0, 0, 1]
-                                            ])
-        
-        self.pointpub = self.create_publisher(MarkerArray,'/points',1)
-        self.relative_point_pub = self.create_publisher(MarkerArray,'/relative',1)
-        self.circle = self.create_publisher(MarkerArray, '/circle_marker', 1)
-        self.intersection = self.create_publisher(Marker,'/intersection',1)
-        self.closest = self.create_publisher(Marker,'/closest',1)
-        self.segments = self.create_publisher(MarkerArray, '/segments', 1)
-        self.turning_points = self.create_publisher(MarkerArray, '/turning_points', 1)
-
-        # self.intersection_1 = self.create_publisher(Marker,'/intersection_1',1)
-        # self.intersection_2 = self.create_publisher(Marker, '/intersection_2' ,1)
-        self.closest = self.create_publisher(Marker,'/closest',1)
-
-        
         self.points = None
         self.current_pose = None
         self.intersections = None
         self.turning_markers = []
         self.goal = None
 
+        self._succeed = None
+        
+        self.lookahead = 1.0  # FILL IN #
+        self.speed = 1.0  # FILL IN #
+        self.wheelbase_length = 0.3  # FILL IN #
 
-        self.errors = []
-        self.slopes =[]
-        self.lookaheads = []
-        self.speeds = []
-        self.times = []
+        # self.MIN_SPEED = 1.6
+        # self.MAX_SPEED = 4.0
+
+        # self.MAX_LOOKAHEAD = 3.0
+        # self.MIN_LOOKAHEAD = 0.5
+        self.speeds = [1.6, 2.5, 4.0]
+        self.lookaheads = [0.5, 2.0, 4.0]
+
+        self.MAX_TURN = 0.34
+
+        # self.trajectory = LineTrajectory("/followed_trajectory")
+
+        # self.traj_sub = self.create_subscription(PoseArray,
+        #                                          "/trajectory/current",
+        #                                          self.trajectory_callback,
+                                                #  1)
+        # self.drive_pub = self.create_publisher(AckermannDriveStamped,
+        #                                        self.drive_topic,
+        #                                        1)
+        
+        # self.pose_sub = self.create_subscription(Odometry, self.odom_topic, self.pose_callback, 1)
+
+        self.transform = lambda theta: np.array([ [np.cos(theta), -np.sin(theta), 0],
+                                             [np.sin(theta), np.cos(theta), 0],
+                                             [0, 0, 1]
+                                            ])
+        
+        # self.relative_point_pub = self.create_publisher(MarkerArray,'/relative',1)
+        self.circle = self.create_publisher(MarkerArray, '/circle_marker', 1)
+        self.intersection = self.create_publisher(Marker,'/intersection',1)
+        self.closest = self.create_publisher(Marker,'/closest',1)
+        self.segments = self.create_publisher(MarkerArray, '/segments', 1)
+
+        self.last_points = None
+        # self.turning_points = self.create_publisher(MarkerArray, '/turning_points', 1)
+
+    @property
+    def success(self): 
+        if self._succeed == True:
+            self.get_logger().info(f'Success!')
+        return self._succeed
+
+    def reset_success(self):
+        self.get_logger().info(f'reset succeed') 
+        self._succeed = None
 
         self.succeed = None
 
@@ -110,6 +117,7 @@ class PurePursuit(Node):
         if self.current_pose is not None and self.intersections is not None:
 
             relative_points = self.intersections - self.current_pose
+
             relative_points = np.array([np.matmul(i,self.transform(self.current_pose[2])) for i in relative_points])
             xdot = np.dot(relative_points[:,0],1)
 
@@ -133,50 +141,55 @@ class PurePursuit(Node):
         Find the point on the trajectory nearest to the car's position.
         relative points: the points on trajectory, converted into the car's frame of reference
         """
-        closest_point , index, closest_segment = None, 0, None
-        min_distance = float('inf')
-        xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
+        if self.last_points is None or np.any(self.points != self.last_points):
+            closest_point , index, closest_segment = None, 0, None
+            min_distance = float('inf')
+            xdot = np.dot(relative_points[:,0], 1) #dot will return 0 if difference is negative (pt is behind)
 
-        #TODO optimize using argmin??
-        for i in range(len(relative_points) - 1):
-            segment_start = relative_points[i]
-            segment_end = relative_points[i + 1]
+            #TODO optimize using argmin??
+            for i in range(len(relative_points) - 1):
+                segment_start = relative_points[i]
+                segment_end = relative_points[i + 1]
+                
+                if xdot[i]> 0: #in front of car
+                    distance = self.find_minimum_distance(segment_start, segment_end, np.array([0,0,0]))
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_point = segment_start
+                        closest_segment = (segment_start, segment_end)
+                        index = i
+
+            # distances = self.find_minimum_distance_array(self.segments, np.array([0,0,0]))
+            # self.get_logger().info(f"array: {distances}")
+            # self.get_logger().info(f"min distance: {min_distance}")
             
-            if xdot[i]> 0: #in front of car
-                distance = self.find_minimum_distance(segment_start, segment_end, np.array([0,0,0]))
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_point = segment_start
-                    closest_segment = (segment_start, segment_end)
-                    index = i
+            distance_to_goal = self.distance(np.array([0,0,0]), relative_points[-1]) #distance to goal pose
 
-        # distances = self.find_minimum_distance_array(self.segments, np.array([0,0,0]))
-        # self.get_logger().info(f"array: {distances}")
-        # self.get_logger().info(f"min distance: {min_distance}")
-        
-        distance_to_goal = self.distance(np.array([0,0,0]), relative_points[-1]) #distance to goal pose
+            # closest_intersect = self.closest_intersect()
+            # if closest_intersect is not None:
+            #     closest_point_intersect = closest_intersect[0]
+            #     closest_global = np.matmul(closest_point_intersect, np.linalg.inv(R)) + self.current_pose
+            #     self.closest.publish(self.to_marker(closest_global, 0, [0.0, 0.0, 1.0], 0.5))
+            
+            # if closest_intersect is not None:
+            #     closest_intersect_distance = closest_intersect[1]
+            # else:
+            #     closest_intersect_distance = None
 
-        closest_intersect = self.closest_intersect()
-        if closest_intersect is not None:
-            closest_point_intersect = closest_intersect[0]
-            closest_global = np.matmul(closest_point_intersect, np.linalg.inv(R)) + self.current_pose
-            self.closest.publish(self.to_marker(closest_global, 0, [0.0, 0.0, 1.0], 0.5))
-        
-        if closest_intersect is not None:
-            closest_intersect_distance = closest_intersect[1]
+            if distance_to_goal < 0.5: 
+                self.get_logger().info("close enough to goal")
+                self.last_points = self.points
+                self._succeed = True
+                return True, None, None
+            elif closest_point is None:
+                self.get_logger().info("no points in front of car")
+                self._succeed = False
+                return True, None, None
+            
+            # self.publish_marker_array(self.relative_point_pub, np.array([closest_point]), R, self.current_pose, rgb=[1.0, 0.0, 0.0])
+            return closest_point, index, distance_to_goal
         else:
-            closest_intersect_distance = None
-
-        if closest_point is None:
-            # self.get_logger().info("no points in front of car")
-            return True, None, None, None, None
-        if distance_to_goal < 0.25: 
-            self.get_logger().info("close enough to goal")
-            self.succeed = True
-            return True, None, None, None, None
-        
-        self.publish_marker_array(self.relative_point_pub, np.array([closest_point]), R, self.current_pose, rgb=[1.0, 0.0, 0.0])
-        return closest_point, index, distance_to_goal, closest_intersect_distance, closest_point_intersect
+            return False, None, None
     
 
     def find_circle_intersection(self, center, radius, p1, p2, R):
@@ -212,16 +225,6 @@ class PurePursuit(Node):
             # self.get_logger().info("extend")
             return False, None
         
-        # intersection_1 = P1 + t1*V
-        # intersection_1 = np.array([intersection_1[0], intersection_1[1], 0])
-        # global_intersect_1 = np.matmul(intersection_1, np.linalg.inv(R)) + self.current_pose
-        # self.intersection_1.publish(self.to_marker(global_intersect_1, 0, [0.0, 1.0, 0.0], 0.5))
-
-        # intersection_2 = P1 + t2*V
-        # intersection_2 = np.array([intersection_2[0], intersection_2[1], 0])
-        # global_intersect_2 = np.matmul(intersection_2, np.linalg.inv(R)) + self.current_pose
-        # self.intersection_2.publish(self.to_marker(global_intersect_2, 0, [0.0, 0.0, 1.0], 0.5))
-        
         if 0 <= t1 <= 1+epsilon:
             return True, P1 + t1*V
         
@@ -244,14 +247,18 @@ class PurePursuit(Node):
         theta = orientation[2]
         R = self.transform(theta)
         self.current_pose = np.array([x,y,theta])  #car's coordinates in global frame
+        # self.get_logger().info(f'{self.current_pose}')
 
         if self.points is not None:
             differences = self.points - self.current_pose
             relative_points = np.array([np.matmul(i,R) for i in differences])
-            closest_point, index, distance_to_goal, intersect_distance, closest_point_intersect = \
+            closest_point, index, distance_to_goal = \
                 self.find_closest_point_on_trajectory(relative_points, R)
             # self.get_logger().info("index: " + str(index))
             # self.get_logger().info("distance to goal: " + str(distance_to_goal))
+
+            alpha = np.arctan2(closest_point[1],closest_point[0])
+            curvature = 2*np.sin(alpha)
 
             drive_cmd = AckermannDriveStamped()
 
@@ -261,47 +268,55 @@ class PurePursuit(Node):
             else:
                 error_from_trajectory = closest_point[1]
                 slope = closest_point[1]/closest_point[0] #y /x 
-                if abs(slope) > 4:
-                    #turn coming up
-                    #publish car's current position to see where it starts to turn
-                    self.turning_markers.append(self.to_marker(self.current_pose, len(self.turning_markers), [1.0, 0.0, 0.0], 0.5))
-                    markerarray = MarkerArray()
-                    markerarray.markers = self.turning_markers
-                    self.turning_points.publish(markerarray)
+                alpha = np.arctan2(closest_point[1],closest_point[0]) #x is in front
+                curvature = 2*np.sin(alpha) / self.lookahead
+
+                self.get_logger().info(f'curvature: {curvature}')
+                # if abs(slope) > 4:
+                #     #turn coming up
+                #     #publish car's current position to see where it starts to turn
+                #     self.turning_markers.append(self.to_marker(self.current_pose, len(self.turning_markers), [1.0, 0.0, 0.0], 0.5))
+                #     markerarray = MarkerArray()
+                #     markerarray.markers = self.turning_markers
+                #     self.turning_points.publish(markerarray)
                 # self.get_logger().info(f'slope: {slope}')
 
-                self.speed = 4.0 * np.exp(-.9*abs(slope))
+                # self.speed = 4.0 * np.exp(-.9*abs(slope))
                 # dist = np.linalg(closest_point_intersect[0], closest_point_intersect[1])
                 # self.speed = min(max(dist, 2.0), 5.0)
 
-                if self.speed < self.MIN_SPEED:
-                    self.speed = self.MIN_SPEED
+                # if self.speed < self.MIN_SPEED:
+                    # self.speed = self.MIN_SPEED
+                speed_index = 0
+                # if curvature < np.pi/8:
+                #     speed_index = 2
+                # elif np.pi/8 < curvature < np.pi/4:
+                #     speed_index = 1
+
+                self.speed = self.speeds[speed_index]
+                self.lookahead = self.lookaheads[speed_index]
 
                 # self.get_logger().info(f'intersect dist: {intersect_distance}')
-                self.lookahead = intersect_distance if intersect_distance is not None and\
-                                intersect_distance < self.speed else self.speed*.5
+                # self.lookahead = intersect_distance if intersect_distance is not None and\
+                                # intersect_distance < self.speed else self.speed*.5
 
                 # self.lookahead = 1.0
                 # self.lookahead = self.speed/2
                 # self.lookahead = 3.0
                 # self.speed = 4.0
 
-                if self.lookahead < self.MIN_LOOKAHEAD:
-                    self.lookahead = self.MIN_LOOKAHEAD
+                # if self.lookahead < self.MIN_LOOKAHEAD:
+                #     self.lookahead = self.MIN_LOOKAHEAD
 
-                if self.lookahead > distance_to_goal:
-                    self.lookahead = distance_to_goal
+                # if self.lookahead > distance_to_goal:
+                #     self.lookahead = distance_to_goal
                 #finding the circle intersection 
-
-                self.errors.append(error_from_trajectory)
-                self.slopes.append(slope)
-                self.lookaheads.append(self.lookahead)
-                self.speeds.append(self.speed)
-                self.times.append(self.get_clock().now().nanoseconds/1e9)
 
                 success = False
                 i = index
-                if i == len(relative_points) - 2:
+                if i == 0:
+                    success,intersect = (True, relative_points[0])
+                elif i == len(relative_points) - 1:
                     success,intersect = (True,relative_points[-1])
                 else:
                     while not success and i < len(relative_points) - 1:
@@ -309,12 +324,11 @@ class PurePursuit(Node):
                         segment_end = relative_points[i + 1]
                         segment = (segment_start, segment_end)
                         success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
-                        # if not success and i > 0:
-                        #     segment_start = relative_points[i - 1]
-                        #     segment_end = relative_points[i]
-                        #     success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
-                    
-                        #so this only works if both parts of the intersections are in FOV
+                        if not success and i > 0:
+                            segment_start = relative_points[i - 1]
+                            segment_end = relative_points[i]
+                            success, intersect = self.find_circle_intersection(np.array([0,0,0]), self.lookahead, segment_start, segment_end, R)
+
                         i += 1
                         # self.publish_marker_array(self.relative_point_pub, segment, R, self.current_pose)
 
@@ -339,7 +353,7 @@ class PurePursuit(Node):
                     global_intersect = np.matmul(intersect, np.linalg.inv(R)) + self.current_pose
                     self.intersection.publish(self.to_marker(global_intersect, 0, [0.0, 1.0, 0.0], 0.5))
                  
-            self.drive_pub.publish(drive_cmd)
+            # self.drive_pub.publish(drive_cmd)
 
         
     def distance(self, p1, p2):
@@ -392,25 +406,11 @@ class PurePursuit(Node):
             geometry_msgs/msg/Point position
             geometry_msgs/msg/Quaternion orientation
         """
-        # self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
+        self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
         self.points = np.array([(i.position.x,i.position.y,0) for i in msg.poses]) #no theta 
         self.get_intersections()
         self.goal = self.points[-1]
-
-        # markers = []
-        # count = 0
-        # for p in self.points:
-            
-        #     marker = self.to_marker(p,count)
-
-        #     markers.append(marker)
-        #     count+=1
-
-        # markerarray = MarkerArray()
-        # markerarray.markers = markers
-
-        # self.pointpub.publish(markerarray)
 
         self.trajectory.clear()
         self.trajectory.fromPoseArray(msg)
@@ -522,14 +522,7 @@ class PurePursuit(Node):
 def main(args=None):
     rclpy.init(args=args)
     follower = PurePursuit()
-    try:
-        rclpy.spin(follower)
-    except KeyboardInterrupt:
-        np.save('errors_4', follower.errors)
-        np.save('slopes_4', follower.slopes)
-        np.save('lookaheads_4', follower.lookaheads)
-        np.save('speeds_4', follower.speeds)
-        np.save('times_4', follower.times)
+    rclpy.spin(follower)
     rclpy.shutdown()
 
 

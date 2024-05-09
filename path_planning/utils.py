@@ -15,7 +15,7 @@ from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from skimage.morphology import dilation,erosion
 from skimage.morphology import square,disk
 
-import dubins
+# import dubins
 # import rsplan as rs
 
 import heapq
