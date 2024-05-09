@@ -16,7 +16,7 @@ from skimage.morphology import dilation,erosion
 from skimage.morphology import square,disk
 
 import dubins
-import rsplan as rs
+# import rsplan as rs
 
 import heapq
 from collections import deque
