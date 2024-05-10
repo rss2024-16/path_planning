@@ -54,6 +54,8 @@ class StanleyController(Node):
         # Whether to use a local motion model to interpolate between localization updates
         self.interpolation = False
 
+        # This link better explains some of the constants
+        # https://www.mathworks.com/help/driving/ref/lateralcontrollerstanley.html
         self.k = 0.2            # Convergence time constant
         self.k_soft = 1.0       # Low speed compensation
         self.k_yaw = 0.0        # Turn dampening
@@ -61,8 +63,8 @@ class StanleyController(Node):
         self.k_ag = 0.0         # Curvature offset
         
         self.v = 2.0
-        self.MAX_TURN = 0.2     # Real max turn is 0.34, but that is too much often
-        self.OFFSET = -0.04     # Constant offset because our robot sucks ass
+        self.MAX_TURN = 0.17    # Turning in the saturated region of the phase diagram
+        self.OFFSET = -0.035    # Constant offset because our robot sucks ass
 
         self.prev_theta_track = 0.0
         self.prev_theta = 0.0
@@ -124,7 +126,7 @@ class StanleyController(Node):
         delta = psi
         delta += theta_xc
         delta += self.k_yaw * (r_meas - r_traj)
-        delta += self.k_steer * (delta - self.prev_delta)
+        delta += self.k_steer * (delta - self.prev_delta)   # Assumes instantaneous steering
 
         # Store rate values
         self.prev_theta = theta
