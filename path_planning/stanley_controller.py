@@ -8,38 +8,51 @@ from tf_transformations import euler_from_quaternion
 import numpy as np
 
 from .utils import LineTrajectory
-import time
 
 class StanleyController(Node):
 
     def __init__(self):
         super().__init__("trajectory_follower")
         self.declare_parameter('odom_topic', "/pf/pose/odom")
+        self.declare_parameter('real_odom_topic', "/odom")
         self.declare_parameter('drive_topic', "/vesc/input/navigation")
 
-        self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value  
-        self.get_logger().info(str(self.drive_topic))      
+        odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
+        real_odom_topic = self.get_parameter("real_odom_topic").get_parameter_value().string_value   
+        drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value  
+        self.get_logger().info(f"Controller drive topic: {drive_topic}")
+        self.get_logger().info(f"Controller odom topic: {real_odom_topic}")      
         
         self.trajectory = LineTrajectory("/followed_trajectory")
 
+        # Subscribers and publishers
         self.traj_sub = self.create_subscription(PoseArray,
                                                  "/trajectory/current",
                                                  self.trajectory_callback,
                                                  1)
+
+        self.odom_sub = self.create_subscription(Odometry, real_odom_topic,
+                                                 self.odom_callback,
+                                                 3)
         
         self.pose_sub = self.create_subscription(Odometry, 
-                                                self.odom_topic, 
+                                                odom_topic, 
                                                 self.pose_callback, 
-                                                1)
+                                                3)
 
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
-                                               self.drive_topic,
-                                               1)
+                                               drive_topic,
+                                               2)
 
-        self.transform = lambda theta: np.array([[np.cos(theta),    -np.sin(theta), 0],
-                                                [np.sin(theta),     np.cos(theta),  0],
-                                                [0,                 0,              1]])
+        # Motion model for pose interpolation     
+        self.motion_model = MotionModel(self)
+
+        # Fixed rate publishing
+        controller_rate = 50.0 # Hz
+        self.controller_timer = self.create_timer(1.0/controller_rate, self.issue_control)
+
+        # Whether to use a local motion model to interpolate between localization updates
+        self.interpolation = False
 
         self.k = 0.2            # Convergence time constant
         self.k_soft = 1.0       # Low speed compensation
@@ -54,42 +67,24 @@ class StanleyController(Node):
         self.prev_theta_track = 0.0
         self.prev_theta = 0.0
         self.prev_delta = 0.0
-        self.prev_t = time.time()
+        self.prev_t = self.get_clock().now()
+        self.prev_odom_t = self.get_clock().now()
+        self.current_pose = None
+        self.prev_estimate = None
 
-    def trajectory_callback(self, msg):
+    def issue_control(self):
         """
-        Takes in a pose array trajectory and converts it to our shitty representation of a trajectory 
+        Tells the robot what to do given all current information
         """
-        self.trajectory.clear()
-        self.trajectory.fromPoseArray(msg)
-        self.trajectory.publish_viz(duration=0.0)
-
-    def pose_callback(self, odometry_msg):
-        """
-        Takes in estimated pose from our localization, and tells the robot how to steer
-        """
-        if len(self.trajectory.points) == 0:
+        if len(self.trajectory.points) == 0 and self.current_pose is not None:
             drive_cmd = AckermannDriveStamped()
             drive_cmd.drive.speed = 0.0
             drive_cmd.drive.steering_angle = 0.0
             self.drive_pub.publish(drive_cmd)
             return
 
-        # Unpack the odom message
-        x = odometry_msg.pose.pose.position.x
-        y = odometry_msg.pose.pose.position.y
-        orientation = euler_from_quaternion((
-            odometry_msg.pose.pose.orientation.x,
-            odometry_msg.pose.pose.orientation.y,
-            odometry_msg.pose.pose.orientation.z,
-            odometry_msg.pose.pose.orientation.w))
-        theta = orientation[2]      
-
-        # Current position in the world frame (why is odom in the world frame?)
-        current_pose = np.array([x, y, theta])
-
         # Previous and next points
-        prev_i = self.find_next_index(current_pose)
+        prev_i = self.find_next_index(self.current_pose)
 
         # Stop if at goal
         if prev_i + 1 == len(self.trajectory.points):
@@ -118,8 +113,9 @@ class StanleyController(Node):
         psi = (psi + np.pi) % (2 * np.pi) - np.pi
 
         # Yaw rates
-        r_traj = (theta_track - self.prev_theta_track) / (time.time() - self.prev_t)
-        r_meas = (theta - self.prev_theta) / (time.time() - self.prev_t)
+        now = self.get_clock().now()
+        r_traj = (theta_track - self.prev_theta_track) / (now - self.prev_t)
+        r_meas = (theta - self.prev_theta) / (now - self.prev_t)
 
         # Yaw setpoint
         psi_ss = self.k_ag * self.v * r_traj
@@ -133,13 +129,60 @@ class StanleyController(Node):
         # Store rate values
         self.prev_theta = theta
         self.prev_theta_track = theta_track
-        self.prev_t = time.time()
+        self.prev_t = now
 
         # Publish the drive command
         drive_cmd = AckermannDriveStamped()
         drive_cmd.drive.speed = self.v
         drive_cmd.drive.steering_angle = np.clip(delta + self.OFFSET, -self.MAX_TURN, self.MAX_TURN)
         self.drive_pub.publish(drive_cmd)
+
+    def odom_callback(self, msg):
+        """
+        Predicts where the robot actually is between pose updates
+        """
+        if not self.interpolation:
+            return
+
+        now = self.get_clock().now()
+
+        dt = (now - self.prev_odom_t).nanoseconds / 1e9
+
+        # Calculate our change in pose
+        v = [odom.twist.twist.linear.x, odom.twist.twist.linear.y, odom.twist.twist.angular.z]
+        dx, dy, dtheta = v[0] * dt, v[1] * dt, v[2] * dt
+        delta_x = [dx, dy, dtheta]
+
+        # Move the pose based on odom
+        self.current_pose = self.motion_model.evaluate_noiseless(self.current_pose, delta_x)
+
+        self.prev_odom_t = now
+
+    def trajectory_callback(self, msg):
+        """
+        Takes in a pose array trajectory and converts it to our shitty representation of a trajectory 
+        """
+        self.trajectory.clear()
+        self.trajectory.fromPoseArray(msg)
+        self.trajectory.publish_viz(duration=0.0)
+
+    def pose_callback(self, odometry_msg):
+        """
+        Takes in estimated pose from our localization and stores it in the node
+        """
+
+        # Unpack the odom message
+        x = odometry_msg.pose.pose.position.x
+        y = odometry_msg.pose.pose.position.y
+        orientation = euler_from_quaternion((
+            odometry_msg.pose.pose.orientation.x,
+            odometry_msg.pose.pose.orientation.y,
+            odometry_msg.pose.pose.orientation.z,
+            odometry_msg.pose.pose.orientation.w))
+        theta = orientation[2]      
+
+        # Update the current pose whenever the localization actually updates it
+        self.current_pose = np.array([x, y, theta])
 
     def find_next_index(self, position):
         """
