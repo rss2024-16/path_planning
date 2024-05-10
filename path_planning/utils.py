@@ -411,141 +411,29 @@ class Map():
         self.x_step = abs(self.pixel_to_xy(0, 0)[0] - self.pixel_to_xy(1, 0)[0])
         
         #2d (int) array of pixel coords indexed by grid[v][u] 
-        #self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
+        self.grid = np.array(occupany_grid.data).reshape((occupany_grid.info.height, occupany_grid.info.width))
         #self.grid = np.load('grid.npy')
-        self.grid = np.load('grid_w_lane.npy')
+        # self.grid = np.load('grid_w_lane.npy')
 
         #here we are dilating the map in order to avoid cutting corners
-        #self.grid = erosion(self.grid, disk(9))
+        self.grid = erosion(self.grid, disk(6))
         # self.grid = dilation(self.grid, disk(6))
 
-        #### CODE FOR GENERATING OFFSET LANE TRAJECTORIES
+        # # RRT stuff
+        # self.one_grid = self.grid.flatten()
 
-        # lane_traj.updatePoints(lane_traj.points[:])
-        # shifted_points = []
-        # shift_distance = 0.5
-        # sample_step = 0.5
-        # skip_next = False
+        # # Crazy RRT ball shit
+        # v_unit_ball = 4/3 * math.pi
 
-        # for i, (x, y, theta) in enumerate(lane_traj.points):
-        #     if i != len(lane_traj.points) - 1:
-        #         next_point = lane_traj.points[i + 1]
-        #         dx = x - next_point[0]
-        #         dy = y - next_point[1]
-        #         steps = np.linalg.norm(np.array([dx, dy])) / sample_step
+        # L = self._resolution
+        # A = L**2
+        # v_cell = A * math.pi
 
-        #         difference = theta - lane_traj.points[i+1][2]
-        #         difference = difference % (2 * math.pi)
-        #         if difference > math.pi:
-        #             difference = 2 * math.pi - difference
+        # num_free_cells = np.count_nonzero(self.grid == 0)
+        # print(num_free_cells)
+        # v_free = v_cell * num_free_cells
 
-        #         if difference <= 1.2:
-        #             steps += 1
-
-        #         for j in range(int(steps)):  
-        #             if not skip_next:      
-                        
-        #                 x_int = x + (sample_step * j * np.cos(theta))
-        #                 y_int = y + (sample_step * j * np.sin(theta))
-
-        #                 dx = x_int - next_point[0]
-        #                 dy = y_int - next_point[1]
-        #                 length_left = np.linalg.norm(np.array([dx, dy]))
-
-
-        #                 if length_left <= shift_distance + 0.1 and difference > 0.7:
-        #                     break
-
-        #                 # Calculate the shift in x and y coordinates
-        #                 x_shift = shift_distance * np.cos(theta + np.pi/2)
-        #                 y_shift = shift_distance * np.sin(theta + np.pi/2)
-                        
-        #                 # Shift the point
-        #                 shifted_x = x_int + x_shift
-        #                 shifted_y = y_int + y_shift
-                        
-        #                 # Store the shifted point
-        #                 shifted_points.append((shifted_x, shifted_y, theta))
-
-        #             else:
-        #                 skip_next = False
-
-        #         if difference >= 1.2:
-        #             skip_next = True
-        #     else:
-        #         # Handle the last point without a next point to calculate dx, dy
-        #         # Calculate the shift in x and y coordinates
-        #         x_shift = shift_distance * np.sin(theta)
-        #         y_shift = shift_distance * np.cos(theta)
-                
-        #         # Shift the point
-        #         shifted_x = x + x_shift
-        #         shifted_y = y + y_shift
-                
-        #         # Store the shifted point
-        #         shifted_points.append((shifted_x, shifted_y, theta))
-
-
-        #     i += 1
-
-        # lane_traj.updatePoints(shifted_points[::-1])
-        # lane_traj.save('/home/racecar/racecar_ws/src/path_planning/example_trajectories/left-lane.traj')
-
-
-        #### END CODE FOR GENERATING OFFSET LANE TRAJECTORIES
-
-        #### CODE FOR ADDING THE CENTERLINE TO THE OCCUPANCY MAP
-
-
-        # for i in range(len(lane) - 1):
-        #     begin = self.xy_to_pixel(lane[i][0], lane[i][1])
-        #     end = self.xy_to_pixel(lane[i + 1][0], lane[i + 1][1])
-
-        #     dy = end[1] - begin[1]
-        #     dx = end[0] - begin[0]
-
-        #     if abs(dy) < abs(dx):
-        #         slope = dy / dx 
-
-        #         step = 1 if begin[0] < end[0] else -1
-
-        #         self.grid[end[1]][end[0]] = 100
-
-        #         stepped = (end[0] - step, end[1] - slope * step)
-        #         while (stepped[0] > begin[0] and begin[0] < end[0]) or (stepped[0] < begin[0] and begin[0] > end[0]):
-        #             self.grid[int(stepped[1])][int(stepped[0])] = 100
-        #             stepped = (stepped[0] - step, stepped[1] - slope * step)
-        #     else:
-        #         slope = dx / dy
-
-        #         step = 1 if begin[1] < end[1] else -1
-        #         self.grid[end[1]][end[0]] = 100
-
-        #         stepped = (end[0] - slope * step, end[1] - step)
-        #         while (stepped[0] > begin[0] and begin[0] < end[0]) or (stepped[0] < begin[0] and begin[0] > end[0]):
-        #             self.grid[int(stepped[1])][int(stepped[0])] = 100
-        #             stepped = (stepped[0] - slope * step, stepped[1] - step)
-
-        # np.save('grid_w_lane.npy',self.grid)
-        # cv2.imwrite('test.png',self.grid)
-
-        #### END CODE FOR ADDING THE CENTERLINE TO THE OCCUPANCY MAP
-
-        # RRT stuff
-        self.one_grid = self.grid.flatten()
-
-        # Crazy RRT ball shit
-        v_unit_ball = 4/3 * math.pi
-
-        L = self._resolution
-        A = L**2
-        v_cell = A * math.pi
-
-        num_free_cells = np.count_nonzero(self.grid == 0)
-        print(num_free_cells)
-        v_free = v_cell * num_free_cells
-
-        self.gamma_estimate = (2**3) * (1 + 1/3) * (v_free / v_unit_ball)
+        # self.gamma_estimate = (2**3) * (1 + 1/3) * (v_free / v_unit_ball)
 
     @property
     def height(self) -> int: return self._height
