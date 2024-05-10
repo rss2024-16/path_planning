@@ -1054,7 +1054,7 @@ class Map():
         neighbors = []
 
         # radius = 8
-        step = 1.0
+        step = 0.5
         possibilities = [(-step, 0), (0, step), (step, 0), (0, -step), (step, step), (step, -step), (-step, step), (-step, -step)]
         for (dx, dy) in possibilities:
             u, v = self.xy_to_pixel(x + dx, y + dy)
