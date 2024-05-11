@@ -71,7 +71,7 @@ class PathPlan(Node):
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
         
         self.occ_map = None
-        self.points = None
+        self.points = []
         self.s = None
         self.t = None
 
@@ -82,23 +82,26 @@ class PathPlan(Node):
         #msg.data vals -> -1, 0, or 100 (0 means free space)
         self.get_logger().info("starting")
 
-        lane_traj = LineTrajectory(self, "/loaded_trajectory")
-        lane_traj.load("/home/racecar/racecar_ws/src/path_planning/example_trajectories/full-lane.traj")
+        # lane_traj = LineTrajectory(self, "/loaded_trajectory")
+        # lane_traj.load("/home/racecar/racecar_ws/src/path_planning/example_trajectories/full-lane.traj")
 
-        self.occ_map = Map(msg, lane_traj)
+        # self.occ_map = Map(msg, lane_traj)
+        self.occ_map = Map(msg)
+
 
     def update_path(self,msg):
-        if self.s is None:
-            self.get_logger().info("Set initial pose first!")
-            return
+        pass
+        # if self.s is None:
+        #     self.get_logger().info("Set initial pose first!")
+        #     return
 
-        if len(self.points) < 3:
-            pose = [msg.point.x, msg.point.y, None]
+        # if len(self.points) < 3:
+        #     pose = [msg.point.x, msg.point.y, None]
 
-            self.points.append(pose)
-            self.get_logger().info("Added point")
-        else:
-            self.get_logger().info("Too many points, reset with initial pose")
+        #     self.points.append(pose)
+        #     self.get_logger().info("Added point")
+        # else:
+        #     self.get_logger().info("Too many points, reset with initial pose")
 
     def pose_cb(self, pose):
         """
@@ -111,14 +114,14 @@ class PathPlan(Node):
         pose.pose.pose.orientation.z,
         pose.pose.pose.orientation.w))
         self.s = [pose.pose.pose.position.x,pose.pose.pose.position.y,orientation[2]]
-        self.points = []
-        self.t = None
+        #self.points = []
+        #self.t = None
     
     def goal_cb(self, msg):
         """
         New goal pose (PoseStamped)
         """
-        if self.s is not None and len(self.points) == 3:
+        if True or (self.s is not None and len(self.points) == 3):
             self.get_logger().info("Goal")
             orientation = euler_from_quaternion((
             msg.pose.orientation.x,
@@ -166,6 +169,7 @@ class PathPlan(Node):
         start_point s: Ros2 Point
         end_point t: Ros2 Point
         """
+        self.get_logger().info(f'start_point: {start_point}')
 
         ALG = "bfs"
         try:

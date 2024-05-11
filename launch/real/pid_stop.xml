@@ -1,0 +1,16 @@
+<launch>
+    <node pkg="path_planning" exec="trajectory_loader" name="trajectory_loader">
+        <!--        <param name="trajectory" value="$HOME/lab6_trajectories/example.traj"/>-->
+        <param name="trajectory" value="$(find-pkg-share path_planning)/example_trajectories/right-lane.traj"/>
+    </node>
+    <node pkg="final_challenge" exec="pid_controller" name="pid_controller">
+        <param from="$(find-pkg-share path_planning)/config/real/yeet_irl.yaml"/>
+    </node>
+    <node pkg="localization" exec="particle_filter" name="particle_filter" output="screen">
+        <param from="$(find-pkg-share localization)/real_params.yaml"/>
+    </node>
+    <node pkg="wall_follower" exec="safety_controller" name="safety_controller" output="screen">
+        <param from="$(find-pkg-share wall_follower)/robotparams.yaml"/>
+    </node>
+    <!-- need to also launch the safety controller as stated in readme probably -->
+</launch>
