@@ -34,7 +34,8 @@ setup(
             'trajectory_planner = path_planning.trajectory_planner:main',
             'trajectory_follower = path_planning.trajectory_follower:main',
             'yeet = path_planning.yeet:main',
-            'stanley_controller = path_planning.stanley_controller:main'
+            'stanley_controller = path_planning.stanley_controller:main',
+            'PID_cont = path_planning.PID_controller:main'
         ],
     },
 )

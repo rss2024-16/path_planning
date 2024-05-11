@@ -83,7 +83,7 @@ class PathPlan(Node):
         self.get_logger().info("starting")
 
         lane_traj = LineTrajectory(self, "/loaded_trajectory")
-        lane_traj.load("/home/racecar/racecar_ws/src/path_planning/example_trajectories/full-lane.traj")
+        lane_traj.load("/root/racecar_ws/src/path_planning/example_trajectories/full-lane.traj")
 
         self.occ_map = Map(msg, lane_traj)
 

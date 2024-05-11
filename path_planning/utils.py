@@ -15,8 +15,8 @@ from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from skimage.morphology import dilation,erosion
 from skimage.morphology import square,disk
 
-import dubins
-import rsplan as rs
+#import dubins
+#import rsplan as rs
 
 import heapq
 from collections import deque
@@ -124,14 +124,12 @@ class LineTrajectory:
                     self.points.append(p)
         else:
             for i in range(len(points) - 1):
-                if i == len(points):
-                    self.points.append((points[i][0], points[i][1], self.points[i - 1][2]))
-                else:
-                    x0 = points[i][0]
-                    y0 = points[i][1]
-                    x1 = points[i + 1][0]
-                    y1 = points[i + 1][1]
-                    self.points.append((x0, y0, np.arctan2((y1 - y0), (x1 - x0))))
+                x0 = points[i][0]
+                y0 = points[i][1]
+                x1 = points[i + 1][0]
+                y1 = points[i + 1][1]
+                self.points.append((x0, y0, np.arctan2((y1 - y0), (x1 - x0))))
+            self.points.append((points[-1][0], points[-1][1], self.points[-1][2]))
         self.reset_distances()
         self.mark_dirty()
 
@@ -416,14 +414,12 @@ class Map():
         self.grid = np.load('grid_w_lane.npy')
 
         #here we are dilating the map in order to avoid cutting corners
-        #self.grid = erosion(self.grid, disk(9))
-        # self.grid = dilation(self.grid, disk(6))
 
         #### CODE FOR GENERATING OFFSET LANE TRAJECTORIES
 
         # lane_traj.updatePoints(lane_traj.points[:])
         # shifted_points = []
-        # shift_distance = 0.5
+        # shift_distance = -0.5
         # sample_step = 0.5
         # skip_next = False
 
@@ -436,14 +432,14 @@ class Map():
 
         #         difference = theta - lane_traj.points[i+1][2]
         #         difference = difference % (2 * math.pi)
-        #         if difference > math.pi:
+        #         if difference < math.pi:
         #             difference = 2 * math.pi - difference
 
-        #         if difference <= 1.2:
+        #         if difference >= 1.2:
         #             steps += 1
 
         #         for j in range(int(steps)):  
-        #             if not skip_next:      
+        #             if True: #not skip_next:      
                         
         #                 x_int = x + (sample_step * j * np.cos(theta))
         #                 y_int = y + (sample_step * j * np.sin(theta))
@@ -467,11 +463,11 @@ class Map():
         #                 # Store the shifted point
         #                 shifted_points.append((shifted_x, shifted_y, theta))
 
-        #             else:
-        #                 skip_next = False
+        #             # else:
+        #             #     skip_next = False
 
-        #         if difference >= 1.2:
-        #             skip_next = True
+        #         # if difference >= 1.2:
+        #         #     skip_next = True
         #     else:
         #         # Handle the last point without a next point to calculate dx, dy
         #         # Calculate the shift in x and y coordinates
@@ -488,14 +484,15 @@ class Map():
 
         #     i += 1
 
-        # lane_traj.updatePoints(shifted_points[::-1])
-        # lane_traj.save('/home/racecar/racecar_ws/src/path_planning/example_trajectories/left-lane.traj')
+        # lane_traj.updatePoints(shifted_points[:])
+        # lane_traj.save("/root/racecar_ws/src/path_planning/example_trajectories/right-lane.traj")
 
 
         #### END CODE FOR GENERATING OFFSET LANE TRAJECTORIES
 
         #### CODE FOR ADDING THE CENTERLINE TO THE OCCUPANCY MAP
 
+        # lane = lane_traj.points
 
         # for i in range(len(lane) - 1):
         #     begin = self.xy_to_pixel(lane[i][0], lane[i][1])
@@ -526,6 +523,7 @@ class Map():
         #             self.grid[int(stepped[1])][int(stepped[0])] = 100
         #             stepped = (stepped[0] - slope * step, stepped[1] - step)
 
+        # self.grid = dilation(self.grid, disk(3))
         # np.save('grid_w_lane.npy',self.grid)
         # cv2.imwrite('test.png',self.grid)
 

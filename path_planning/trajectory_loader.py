@@ -20,7 +20,7 @@ class LoadTrajectory(Node):
         # initialize and load the trajectory
         self.trajectory = LineTrajectory(self, "/loaded_trajectory")
         self.get_logger().info(f"Loading from {self.path}")
-        self.trajectory.load(self.path)
+        self.trajectory.load("/root/racecar_ws/src/path_planning/example_trajectories/right-lane.traj")
         self.trajectory.updatePoints(self.trajectory.points[:])
 
         self.pub_topic = "/trajectory/current"
@@ -34,25 +34,6 @@ class LoadTrajectory(Node):
 
         # send the trajectory
         self.publish_trajectory()
-
-        
-        ### MANUAL
-        # initialize and load the trajectory
-        self.path = '/home/racecar/racecar_ws/src/path_planning/example_trajectories/left-lane.traj'
-        self.trajectory_right = LineTrajectory(self, "/loaded_trajectory")
-        self.get_logger().info(f"Loading from {self.path}")
-        self.trajectory_right.load(self.path)
-        self.trajectory_right.updatePoints(self.trajectory_right.points[:])
-
-        self.pub_topic = "/trajectory/right"
-        self.traj_pub_right = self.create_publisher(PoseArray, self.pub_topic, 1)
-
-        # need to wait a short period of time before publishing the first message
-        time.sleep(0.5)
-
-        # send the trajectory
-        print("Publishing trajectory to:", self.pub_topic)
-        self.traj_pub_right.publish(self.trajectory_right.toPoseArray())
 
     def publish_trajectory(self):
         print("Publishing trajectory to:", self.pub_topic)
